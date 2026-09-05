@@ -20,6 +20,26 @@ A lightweight, modular coding agent harness compatible with **`model-router`** (
 
 ## Quick Start
 
+### Install a release
+
+On macOS or Linux, install the latest tagged release with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Mitriyweb/mini-agent/main/install.sh | bash
+```
+
+The installer places `mini-agent` in `~/.local/bin`. Add that directory to your
+`PATH` if it is not already available. To install a specific tag:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Mitriyweb/mini-agent/main/install.sh | MINI_AGENT_VERSION=v0.1.0 bash
+```
+
+Project page: https://mitriyweb.github.io/mini-agent/
+
+Releases are built automatically for macOS (Intel and Apple Silicon), Linux
+(x64 and arm64), and Windows (x64) when a `v*` tag is pushed.
+
 ### 1. Ensure `model-router` is running
 ```bash
 # In the root model-router directory:
