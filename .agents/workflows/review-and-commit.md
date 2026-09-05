@@ -44,10 +44,11 @@ If critical or high issues are found -> fix them before proceeding.
 ### Run Validation Pipeline
 
 ```bash
-bun run test
+bun run verify
 ```
 
-All unit tests in `tests/*.test.js` must pass with exit code `0` before proceeding.
+This runs Biome lint, TypeScript typecheck, unit tests, and the production build
+in one command. It must exit with code `0` before proceeding.
 
 Optional syntax validation on modified files:
 ```bash
@@ -132,7 +133,7 @@ Issues: [count critical] / [count high] / [count medium]
 
 ## Key Rules
 
-1. **All checks pass** before commit (`bun run test`).
+1. **All checks pass** before commit (`bun run verify`).
 2. **Use `bun run`** for tests and scripts.
 3. **Conventional commits** — `type: description` format.
 4. **New commits only** — never amend unless explicitly requested.
