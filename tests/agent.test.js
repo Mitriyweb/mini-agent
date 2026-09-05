@@ -9,6 +9,13 @@ const fs = require('node:fs/promises');
 const { registry } = require('../agent/tools.js');
 const { createProvider } = require('../agent/llm.js');
 const { createPermissions } = require('../agent/permissions.js');
+const {
+  parseFrontmatter,
+  loadWorkflows,
+  loadSkills,
+  formatCustomizationsPrompt,
+  resolveWorkflowCommand,
+} = require('../agent/customizations.js');
 const { openWorkspace, workspace } = require('../agent/workspace.js');
 const { parseArgs } = require('../start.js');
 
@@ -110,5 +117,74 @@ describe('mini-agent tests', () => {
     assert.strictEqual(approvedRl, true);
     assert.strictEqual(mockQuestionCalled, true);
     permsRl.close();
+  });
+
+  test('customizations.js parseFrontmatter extracts YAML metadata and body', () => {
+    const raw = '---\ndescription: Test workflow\nauthor: mini-agent\n---\n# Step 1\nRun test';
+    const parsed = parseFrontmatter(raw);
+    assert.strictEqual(parsed.metadata.description, 'Test workflow');
+    assert.strictEqual(parsed.metadata.author, 'mini-agent');
+    assert.strictEqual(parsed.body, '# Step 1\nRun test');
+
+    const noFrontmatter = '# No frontmatter\nJust body';
+    const parsedNoFm = parseFrontmatter(noFrontmatter);
+    assert.deepStrictEqual(parsedNoFm.metadata, {});
+    assert.strictEqual(parsedNoFm.body, noFrontmatter);
+  });
+
+  test('customizations.js discovers workflows and skills from workspace', async () => {
+    const wfDir = path.join(tempDir, '.agents', 'workflows');
+    await fs.mkdir(wfDir, { recursive: true });
+    await fs.writeFile(
+      path.join(wfDir, 'deploy.md'),
+      '---\ndescription: Deploy workflow\n---\nRun deployment script',
+    );
+
+    const workflows = await loadWorkflows(tempDir);
+    const deployWf = workflows.find((w) => w.name === 'deploy');
+    assert.ok(deployWf, 'Should discover deploy workflow');
+    assert.strictEqual(deployWf.command, '/deploy');
+    assert.strictEqual(deployWf.description, 'Deploy workflow');
+    assert.strictEqual(deployWf.content, 'Run deployment script');
+
+    const skillDir = path.join(tempDir, '.agents', 'skills', 'git-helper');
+    await fs.mkdir(skillDir, { recursive: true });
+    await fs.writeFile(
+      path.join(skillDir, 'SKILL.md'),
+      '---\nname: git-helper\ndescription: Git assist skill\n---\nFollow git guidelines',
+    );
+
+    const skills = await loadSkills(tempDir);
+    const gitSkill = skills.find((s) => s.name === 'git-helper');
+    assert.ok(gitSkill, 'Should discover git-helper skill');
+    assert.strictEqual(gitSkill.description, 'Git assist skill');
+    assert.strictEqual(gitSkill.content, 'Follow git guidelines');
+
+    const promptText = formatCustomizationsPrompt({ workflows, skills });
+    assert.ok(promptText.includes('## Workflows'), 'Prompt includes workflows header');
+    assert.ok(promptText.includes('/deploy'), 'Prompt includes /deploy');
+    assert.ok(promptText.includes('## Skills'), 'Prompt includes skills header');
+    assert.ok(promptText.includes('git-helper'), 'Prompt includes git-helper');
+  });
+
+  test('customizations.js resolveWorkflowCommand correctly parses slash commands', () => {
+    const mockWorkflows = [
+      { name: 'review', command: '/review', content: 'Do review', description: 'Review code' },
+    ];
+
+    const matchedExact = resolveWorkflowCommand('/review', mockWorkflows);
+    assert.strictEqual(matchedExact.matched, true);
+    assert.strictEqual(matchedExact.prompt, 'Do review');
+
+    const matchedWithArgs = resolveWorkflowCommand('/review check start.js', mockWorkflows);
+    assert.strictEqual(matchedWithArgs.matched, true);
+    assert.ok(matchedWithArgs.prompt.includes('User context/input: check start.js'));
+
+    const unmatched = resolveWorkflowCommand('/unknown', mockWorkflows);
+    assert.strictEqual(unmatched.matched, false);
+    assert.strictEqual(unmatched.commandName, 'unknown');
+
+    const notCommand = resolveWorkflowCommand('normal message', mockWorkflows);
+    assert.strictEqual(notCommand, null);
   });
 });

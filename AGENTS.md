@@ -42,6 +42,7 @@ Context Update & Next Iteration
 - **`agent/permissions.js`**: Controls execution safety. Checks whether file or bash commands escape the git root (`toolLeavesTrustRoot`). Manages approval prompt (`rl.question`). Reuses injected `rl` to prevent terminal keypress duplication.
 - **`agent/workspace.js`**: Tracks `workspace.root` and `workspace.gitRoot`. Guarantees file operations remain contained inside the workspace.
 - **`agent/llm.js`**: Configures the OpenAI client. Handles HTTP 429/503 retries, exponential backoff, and fallback models.
+- **`agent/customizations.js`**: Discovers and parses workflows (`.agents/workflows/*.md`) and skills (`.agents/skills/*/SKILL.md`), manages slash commands (`/workflow-name`), and injects customization catalogs into the system prompt.
 - **`prompts/system.md`**: Base system prompt defining the agent's operating behavior and tool discipline.
 - **`tools/`**: Modular directory-based tools. Each tool exports `definition`, `execute(args)`, `trust(args)`, and `describe(args)`.
 

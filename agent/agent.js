@@ -6,6 +6,12 @@ const path = require('node:path');
 const { isError, isHashObject, jsonParse } = require('metautil');
 
 const { registry } = require('./tools.js');
+const { workspace } = require('./workspace.js');
+const {
+  loadWorkflows,
+  loadSkills,
+  formatCustomizationsPrompt,
+} = require('./customizations.js');
 
 const INSTRUCTIONS_FILE = path.join(__dirname, '..', 'prompts', 'system.md');
 const INSTRUCTIONS = fs.readFileSync(INSTRUCTIONS_FILE, 'utf8').trim();
@@ -94,8 +100,20 @@ const initialMessages = (task, instructions, priorMessages) => {
 
 const runAgent = async (options) => {
   const { task, provider, permissions } = options;
-  const { maxSteps = 30, instructions = INSTRUCTIONS } = options;
-  const { onEvent, priorMessages } = options;
+  const { maxSteps = 30, onEvent, priorMessages } = options;
+
+  let instructions = options.instructions;
+  if (!instructions) {
+    instructions = INSTRUCTIONS;
+    if (!priorMessages) {
+      const workflows = options.workflows ?? (await loadWorkflows(workspace.root));
+      const skills = options.skills ?? (await loadSkills(workspace.root));
+      const customizationsText = formatCustomizationsPrompt({ workflows, skills });
+      if (customizationsText) {
+        instructions = `${instructions}${customizationsText}`;
+      }
+    }
+  }
 
   const emit = async (type, data = {}) => {
     await onEvent?.({ type, ...data });

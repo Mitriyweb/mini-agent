@@ -8,6 +8,8 @@ A lightweight, modular coding agent harness compatible with **`model-router`** (
 
 - **Model Router Integration**: Pre-configured to connect to `http://localhost:8787/v1` with model `model-router-auto`.
 - **Modular Local Tools**: Includes file & workspace operations (`read`, `write`, `edit`, `patch`, `delete`, `glob`, `grep`, `bash`, `check`, `fetch`, `todo`).
+- **Workflows & Slash Commands**: Auto-discovers step-by-step procedures in `.agents/workflows/*.md` and supports `/workflow-name` slash commands in interactive and batch modes.
+- **Skills On-Demand**: Discovers capabilities in `.agents/skills/*/SKILL.md` with YAML frontmatter and exposes them directly to the agent's context.
 - **Interactive & CLI Modes**:
   - Run a single task from CLI arguments.
   - Or run in interactive CLI REPL mode for back-and-forth conversation.

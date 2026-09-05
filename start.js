@@ -19,6 +19,11 @@ const color = concolor({
 });
 
 const { errorText, runAgent } = require('./agent/agent.js');
+const {
+  loadWorkflows,
+  loadSkills,
+  resolveWorkflowCommand,
+} = require('./agent/customizations.js');
 const { createProvider } = require('./agent/llm.js');
 const { createPermissions } = require('./agent/permissions.js');
 const { openWorkspace } = require('./agent/workspace.js');
@@ -97,6 +102,9 @@ const main = async () => {
   const root = await resolveRoot(options.workspaceDir);
   await openWorkspace(root);
 
+  const workflows = await loadWorkflows(root);
+  const skills = await loadSkills(root);
+
   const providerOptions = {};
   if (options.customModel) providerOptions.model = options.customModel;
   if (options.customUrl) providerOptions.baseURL = options.customUrl;
@@ -110,20 +118,34 @@ const main = async () => {
   console.log(`Base URL  : ${provider.baseURL}`);
   console.log(`Model     : ${provider.model}`);
   console.log(`AutoApprove: ${options.autoApprove ? 'YES' : 'NO'}`);
+  if (workflows.length > 0) {
+    console.log(`Workflows : ${workflows.map((w) => w.command).join(', ')}`);
+  }
+  if (skills.length > 0) {
+    console.log(`Skills    : ${skills.map((s) => s.name).join(', ')}`);
+  }
   console.log('--------------------------------------------------\n');
 
   const onEvent = createEventHandler();
 
   if (options.task) {
     const permissions = createPermissions({ autoApprove: options.autoApprove });
-    console.log(color.cyan(`Task: ${options.task}\n`));
+    const resolvedWf = resolveWorkflowCommand(options.task, workflows);
+    const taskText = resolvedWf?.matched ? resolvedWf.prompt : options.task;
+    if (resolvedWf?.matched) {
+      console.log(color.cyan(`Workflow: ${resolvedWf.workflow.command} (${resolvedWf.workflow.name})\n`));
+    } else {
+      console.log(color.cyan(`Task: ${options.task}\n`));
+    }
     try {
       await runAgent({
-        task: options.task,
+        task: taskText,
         provider,
         permissions,
         maxSteps: DEFAULT_MAX_STEPS,
         onEvent,
+        workflows,
+        skills,
       });
       console.log(color.success('\nTask completed successfully.'));
     } catch (err) {
@@ -144,7 +166,8 @@ const main = async () => {
 
   let priorMessages = null;
 
-  console.log(color.info('Interactive session started. Type your task below or "exit" / "quit" to stop.\n'));
+  console.log(color.info('Interactive session started. Type your task below or "exit" / "quit" to stop.'));
+  console.log(color.dim('Type /help or /workflows to see available workflows.\n'));
 
   try {
     while (true) {
@@ -156,14 +179,49 @@ const main = async () => {
         break;
       }
 
+      if (trimmed === '/help' || trimmed === '/workflows' || trimmed === '/skills') {
+        console.log(color.info('\n--- Workflows ---'));
+        if (workflows.length === 0) {
+          console.log(color.dim('  (none found in .agents/workflows or ~/workflows)'));
+        } else {
+          for (const wf of workflows) {
+            console.log(color.cyan(`  ${wf.command}`) + ` - ${wf.description}`);
+          }
+        }
+        console.log(color.info('\n--- Skills ---'));
+        if (skills.length === 0) {
+          console.log(color.dim('  (none found in .agents/skills or ~/skills)'));
+        } else {
+          for (const s of skills) {
+            console.log(color.cyan(`  ${s.name}`) + ` - ${s.description}`);
+          }
+        }
+        console.log('');
+        continue;
+      }
+
+      let taskToRun = trimmed;
+      if (trimmed.startsWith('/')) {
+        const resolvedWf = resolveWorkflowCommand(trimmed, workflows);
+        if (resolvedWf?.matched) {
+          console.log(color.cyan(`\n⚡ Running workflow: ${resolvedWf.workflow.command} (${resolvedWf.workflow.name})\n`));
+          taskToRun = resolvedWf.prompt;
+        } else {
+          console.log(color.warn(`Unknown command: ${trimmed}. Type /workflows to list available workflows.\n`));
+          continue;
+        }
+      }
+
       try {
         const result = await runAgent({
-          task: trimmed,
+          task: taskToRun,
           provider,
           permissions,
           maxSteps: DEFAULT_MAX_STEPS,
           onEvent,
           priorMessages,
+          workflows,
+          skills,
         });
         priorMessages = result.messages;
       } catch (err) {
