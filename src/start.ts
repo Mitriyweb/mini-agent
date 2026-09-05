@@ -216,7 +216,7 @@ export const main = async () => {
   const permissions = createPermissions({ autoApprove: options.autoApprove }, workspace);
 
   console.log(color.info('=================================================='));
-  console.log(color.info(`           mini-agent v${VERSION} (model-router)  `));
+  console.log(color.info(`                 mini-agent v${VERSION}               `));
   console.log(color.info('=================================================='));
   console.log(`Workspace : ${workspace.root}`);
   console.log(`Base URL  : ${provider.baseURL}`);
