@@ -190,6 +190,18 @@ export const createEventHandler = () => {
   };
 };
 
+const installInterruptHandler = (cleanup: () => void): (() => void) => {
+  const handleInterrupt = () => {
+    console.error('\nFlow interrupted.');
+    cleanup();
+    process.exitCode = 130;
+    process.exit();
+  };
+
+  process.once('SIGINT', handleInterrupt);
+  return () => process.off('SIGINT', handleInterrupt);
+};
+
 export const main = async () => {
   const options = parseArgs(process.argv);
 
@@ -214,6 +226,7 @@ export const main = async () => {
 
   const provider = createProvider(providerOptions);
   const permissions = createPermissions({ autoApprove: options.autoApprove }, workspace);
+  const removeInterruptHandler = installInterruptHandler(() => permissions.close());
 
   console.log(color.info('=================================================='));
   console.log(color.info(`                 mini-agent v${VERSION}               `));
@@ -252,6 +265,7 @@ export const main = async () => {
       console.error(color.error(`\nAgent error: ${errorText(err)}`));
       process.exitCode = 1;
     } finally {
+      removeInterruptHandler();
       permissions.close();
     }
     return;
@@ -260,6 +274,10 @@ export const main = async () => {
   // Interactive REPL mode
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const permissionsRepl = createPermissions({ autoApprove: options.autoApprove, rl }, workspace);
+  const removeInterruptHandlerRepl = installInterruptHandler(() => {
+    rl.close();
+    permissionsRepl.close();
+  });
 
   let priorMessages = null;
 
@@ -324,6 +342,7 @@ export const main = async () => {
       console.log('\n--------------------------------------------------');
     }
   } finally {
+    removeInterruptHandlerRepl();
     rl?.close();
     permissionsRepl.close();
   }
