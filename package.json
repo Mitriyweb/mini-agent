@@ -1,6 +1,6 @@
 {
   "name": "mini-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "A small modular coding agent harness compatible with model-router.",
   "type": "module",
@@ -17,7 +17,8 @@
     "start": "bun run dist/start.js",
     "dev": "bun run src/start.ts",
     "test": "bun test",
-    "check": "bun x tsc --noEmit"
+    "check": "bun x tsc --noEmit",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "dependencies": {
     "concolor": "^1.1.4",
