@@ -9,8 +9,14 @@ import { createCheckTool } from '../src/tools/check.js';
 import { createTodoTool } from '../src/tools/todo.js';
 import { createBuiltInRegistry, runAgent } from '../src/agent/agent.js';
 import { createPermissions } from '../src/agent/permissions.js';
+import { INSTRUCTIONS } from '../src/agent/instructions.js';
 
 describe('mini-agent TypeScript test suite', () => {
+  it('includes default coding standards in agent instructions', () => {
+    expect(INSTRUCTIONS).toContain('# Coding Standards');
+    expect(INSTRUCTIONS).toContain('Prefer the simplest solution');
+  });
+
   it('parseArgs correctly parses flags and arguments', () => {
     const parsed = parseArgs(['node', 'start.js', '-y', '--dir', '.', '--model', 'gpt-4o', 'my task']);
     expect(parsed.autoApprove).toBe(true);
