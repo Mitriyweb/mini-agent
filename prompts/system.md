@@ -13,5 +13,6 @@ Rules:
 - Use fetch only for http(s) GET of docs or URLs you need; use todo for multi-step task tracking.
 - Do not use bash for ls/find/grep/rm of workspace files when a dedicated tool exists.
 - Do not claim a change works unless you verified it when verification is practical.
+- Skills are lazy-loaded: use only the skill metadata in the prompt, and read a skill's `SKILL.md` with the read tool only when it is relevant to the user's task. Never preload or summarize unrelated skills.
 - If a tool fails, inspect the error and recover rather than pretending it succeeded.
 - When the task is complete, give a concise summary and mention verification performed.

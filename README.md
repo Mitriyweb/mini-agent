@@ -11,6 +11,7 @@ A lightweight, modular coding agent harness compatible with **`model-router`** (
 - **Modular Local Tools**: Includes file & workspace operations (`read`, `write`, `edit`, `patch`, `delete`, `glob`, `grep`, `bash`, `check`, `fetch`, `todo`).
 - **Workflows & Slash Commands**: Auto-discovers step-by-step procedures in `.agents/workflows/*.md` and supports `/workflow-name` slash commands in interactive and batch modes.
 - **Skills On-Demand**: Discovers capabilities in `.agents/skills/*/SKILL.md` with YAML frontmatter and exposes them directly to the agent's context.
+- **Lazy Skill Loading**: Adds only skill metadata to the prompt; full skill instructions are read only when relevant to the current task.
 - **CRLF/LF Normalization**: Handles cross-platform line ending differences during text edits and patches.
 - **Interactive & CLI Modes**:
   - Run a single task from CLI arguments with `bun run start -- -y "Task"`.

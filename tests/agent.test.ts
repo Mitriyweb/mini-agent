@@ -10,11 +10,30 @@ import { createTodoTool } from '../src/tools/todo.js';
 import { createBuiltInRegistry, runAgent } from '../src/agent/agent.js';
 import { createPermissions } from '../src/agent/permissions.js';
 import { INSTRUCTIONS } from '../src/agent/instructions.js';
+import { formatCustomizationsPrompt } from '../src/agent/customizations.js';
 
 describe('mini-agent TypeScript test suite', () => {
   it('includes default coding standards in agent instructions', () => {
     expect(INSTRUCTIONS).toContain('# Coding Standards');
     expect(INSTRUCTIONS).toContain('Prefer the simplest solution');
+  });
+
+  it('lists skills without loading their full content into the prompt', () => {
+    const prompt = formatCustomizationsPrompt({
+      skills: [
+        {
+          name: 'codebase-onboarding',
+          description: 'Map an unfamiliar codebase.',
+          dir: '.agents/skills/codebase-onboarding',
+          path: '.agents/skills/codebase-onboarding/SKILL.md',
+          content: 'Private skill content',
+          raw: 'Private skill content',
+        },
+      ],
+    });
+    expect(prompt).toContain('codebase-onboarding');
+    expect(prompt).toContain('read its SKILL.md');
+    expect(prompt).not.toContain('Private skill content');
   });
 
   it('parseArgs correctly parses flags and arguments', () => {

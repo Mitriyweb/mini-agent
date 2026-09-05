@@ -1,5 +1,6 @@
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { INSTRUCTIONS } from './instructions.js';
+import { formatCustomizationsPrompt } from './customizations.js';
 import { Workspace } from './workspace.js';
 import { createBashTool } from '../tools/bash.js';
 import { createCheckTool } from '../tools/check.js';
@@ -138,14 +139,15 @@ export const initialMessages = (
 
 export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
   const { task, provider, permissions, workspace } = options;
-  const { maxSteps = 30, instructions = INSTRUCTIONS } = options;
+  const { maxSteps = 30, instructions = INSTRUCTIONS, workflows = [], skills = [] } = options;
   const { onEvent, priorMessages } = options;
+  const effectiveInstructions = `${instructions}${formatCustomizationsPrompt({ workflows, skills })}`;
 
   const emit = async (type: AgentEvent['type'], data = {}) => {
     await onEvent?.({ type, ...data } as AgentEvent);
   };
 
-  const messages = initialMessages(task, instructions, priorMessages);
+  const messages = initialMessages(task, effectiveInstructions, priorMessages);
   const registry = createBuiltInRegistry({ workspace });
   const toolContext: ToolCallContext = { permissions, emit, registry };
 
