@@ -3,5 +3,4 @@
 set -eu
 
 printf '%s\n' 'Running pre-commit checks...'
-bun run check
-bun run test
+bun run verify
