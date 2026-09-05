@@ -19,16 +19,16 @@ jobs:
           - runner: ubuntu-latest
             target: bun-linux-x64
             asset: linux-x64
-          - runner: ubuntu-24.04-arm
+          - runner: ubuntu-latest
             target: bun-linux-arm64
             asset: linux-arm64
-          - runner: macos-13
+          - runner: ubuntu-latest
             target: bun-darwin-x64
             asset: darwin-x64
-          - runner: macos-14
+          - runner: ubuntu-latest
             target: bun-darwin-arm64
             asset: darwin-arm64
-          - runner: windows-latest
+          - runner: ubuntu-latest
             target: bun-windows-x64
             asset: windows-x64.exe
 
@@ -60,12 +60,9 @@ jobs:
         with:
           path: release
           merge-multiple: true
-      - name: Create release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="${{ github.ref_name }}"
-          if ! gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release create "$tag" --repo "${{ github.repository }}" --generate-notes
-          fi
-          gh release upload "$tag" release/* --repo "${{ github.repository }}" --clobber
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release/*
