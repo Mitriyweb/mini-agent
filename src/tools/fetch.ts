@@ -1,0 +1,128 @@
+import type { Tool, ToolDefinition } from '../types/tools.js';
+
+const DEFAULT_MAX = 30_000;
+const HARD_MAX = 60_000;
+const FETCH_TIMEOUT_MS = 15_000;
+
+export interface FetchArgs {
+  url: string;
+  max_chars?: number;
+}
+
+const resolveMaxChars = (value?: number): number => {
+  if (value === undefined || value === null) return DEFAULT_MAX;
+  const max = Math.trunc(value);
+  if (!Number.isFinite(max) || max < 1) {
+    throw new Error('max_chars must be a positive number.');
+  }
+  return Math.min(max, HARD_MAX);
+};
+
+const parseUrl = (urlText: string): URL => {
+  try {
+    return new URL(urlText);
+  } catch {
+    throw new Error('url must be a valid URL.');
+  }
+};
+
+const isBlockedHost = (hostname: string): boolean => {
+  const host = hostname.toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0') {
+    return true;
+  }
+  if (host === '169.254.169.254') {
+    return true; // AWS / Cloud metadata endpoint
+  }
+  if (host.startsWith('10.') || host.startsWith('192.168.')) {
+    return true; // Private RFC1918
+  }
+  if (host.startsWith('172.')) {
+    const secondByte = parseInt(host.split('.')[1] ?? '', 10);
+    if (!isNaN(secondByte) && secondByte >= 16 && secondByte <= 31) {
+      return true; // Private 172.16.0.0/12
+    }
+  }
+  return false;
+};
+
+const assertHttpUrl = (urlText: string): URL => {
+  const parsed = parseUrl(urlText);
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Only http: and https: URLs are allowed.');
+  }
+  if (isBlockedHost(parsed.hostname)) {
+    throw new Error(`Requests to private or internal addresses are blocked: ${parsed.hostname}`);
+  }
+  return parsed;
+};
+
+const fetchWithTimeout = async (urlText: string, signal: AbortSignal): Promise<Response> => {
+  try {
+    return await fetch(urlText, {
+      method: 'GET',
+      redirect: 'follow',
+      signal,
+    });
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      const seconds = FETCH_TIMEOUT_MS / 1000;
+      throw new Error(`fetch exceeded the ${seconds} second timeout.`);
+    }
+    throw new Error(`fetch failed: ${error?.message ?? error}`);
+  }
+};
+
+export const fetchDefinition: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'fetch',
+    description: 'Fetch web content via HTTP/HTTPS GET request.',
+    parameters: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: 'Absolute http or https URL to fetch.',
+        },
+        max_chars: {
+          type: 'number',
+          description: 'Max body response characters.',
+        },
+      },
+      required: ['url'],
+    },
+  },
+};
+
+export const createFetchTool = (): Tool<FetchArgs, string> => ({
+  needsApproval: true,
+  trust: 'always',
+  describe: (args) => `fetch ${args.url}`,
+  async execute(args) {
+    const urlText = args.url;
+    if (typeof urlText !== 'string' || urlText.length === 0) {
+      throw new Error('url must be a non-empty string.');
+    }
+    assertHttpUrl(urlText);
+    const maxChars = resolveMaxChars(args.max_chars);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const response = await fetchWithTimeout(urlText, controller.signal);
+      const finalUrl = response.url || urlText;
+      assertHttpUrl(finalUrl);
+
+      const body = await response.text();
+      const header = `status: ${response.status}\nurl: ${finalUrl}\n\n`;
+      if (body.length <= maxChars) return `${header}${body}`;
+      const clipped = body.slice(0, maxChars);
+      const note = `\n...[body truncated at ${maxChars} chars]`;
+      return `${header}${clipped}${note}`;
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+  definition: fetchDefinition,
+});
