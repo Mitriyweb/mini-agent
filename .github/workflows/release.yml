@@ -43,7 +43,7 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Compile
         shell: bash
-        run: bun build start.js --compile --target=${{ matrix.target }} --outfile mini-agent-${{ matrix.asset }}
+        run: bun build src/start.ts --compile --target=${{ matrix.target }} --outfile mini-agent-${{ matrix.asset }}
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
