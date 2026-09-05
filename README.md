@@ -39,6 +39,10 @@ curl -fsSL https://raw.githubusercontent.com/Mitriyweb/mini-agent/main/install.s
 
 Project page: https://mitriyweb.github.io/mini-agent/
 
+To enable deployment, open the repository settings at **Settings -> Pages**,
+select **GitHub Actions** as the source, and save once. Subsequent pushes to
+`main` deploy the `docs/` directory automatically.
+
 Releases are built automatically for macOS (Intel and Apple Silicon), Linux
 (x64 and arm64), and Windows (x64) when a `v*` tag is pushed.
 
