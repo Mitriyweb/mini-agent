@@ -13,13 +13,13 @@ export const checkDefinition: ToolDefinition = {
   type: 'function',
   function: {
     name: 'check',
-    description: 'Run syntax checks (node --check on a file or npm run check for project).',
+    description: 'Run syntax/type checks (bun x tsc --noEmit or project check script).',
     parameters: {
       type: 'object',
       properties: {
         path: {
           type: 'string',
-          description: 'Optional file path relative to workspace root to run node --check on.',
+          description: 'Optional file path relative to workspace root to run type checks on.',
         },
       },
     },
@@ -45,18 +45,21 @@ export const createCheckTool = (env: ToolEnvironment): Tool<CheckArgs, string> =
     trust: (args) => (hasPath(args) ? 'path' : 'command'),
     describe(args) {
       if (hasPath(args)) return `check ${args.path}`;
-      return 'npm run check';
+      return 'bun run check';
     },
     async execute(args) {
       if (hasPath(args) && args.path) {
         const filePath = await workspace.resolveExistingFile(args.path);
-        return runFile('node', ['--check', filePath], workspace.root);
+        if (filePath.endsWith('.js') || filePath.endsWith('.mjs') || filePath.endsWith('.cjs')) {
+          return runFile('node', ['--check', filePath], workspace.root);
+        }
+        return runFile('bun', ['x', 'tsc', '--noEmit', filePath], workspace.root);
       }
       const ok = await hasCheckScript();
       if (!ok) {
-        throw new Error('No scripts.check in package.json; pass path for node --check.');
+        return runFile('bun', ['x', 'tsc', '--noEmit'], workspace.root);
       }
-      return runFile('npm', ['run', 'check'], workspace.root);
+      return runFile('bun', ['run', 'check'], workspace.root);
     },
     definition: checkDefinition,
   };

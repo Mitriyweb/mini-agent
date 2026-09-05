@@ -26,10 +26,33 @@ const parseUrl = (urlText: string): URL => {
   }
 };
 
+const isBlockedHost = (hostname: string): boolean => {
+  const host = hostname.toLowerCase();
+  if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0') {
+    return true;
+  }
+  if (host === '169.254.169.254') {
+    return true; // AWS / Cloud metadata endpoint
+  }
+  if (host.startsWith('10.') || host.startsWith('192.168.')) {
+    return true; // Private RFC1918
+  }
+  if (host.startsWith('172.')) {
+    const secondByte = parseInt(host.split('.')[1] ?? '', 10);
+    if (!isNaN(secondByte) && secondByte >= 16 && secondByte <= 31) {
+      return true; // Private 172.16.0.0/12
+    }
+  }
+  return false;
+};
+
 const assertHttpUrl = (urlText: string): URL => {
   const parsed = parseUrl(urlText);
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('Only http: and https: URLs are allowed.');
+  }
+  if (isBlockedHost(parsed.hostname)) {
+    throw new Error(`Requests to private or internal addresses are blocked: ${parsed.hostname}`);
   }
   return parsed;
 };

@@ -4,11 +4,8 @@ import { Workspace } from '../src/agent/workspace.js';
 import { createReadTool } from '../src/tools/read.js';
 import { createWriteTool } from '../src/tools/write.js';
 import { createEditTool } from '../src/tools/edit.js';
-import { createPatchTool } from '../src/tools/patch.js';
 import { createDeleteTool } from '../src/tools/delete.js';
-import { createGlobTool } from '../src/tools/glob.js';
-import { createGrepTool } from '../src/tools/grep.js';
-import { createBashTool } from '../src/tools/bash.js';
+import { createCheckTool } from '../src/tools/check.js';
 import { createTodoTool } from '../src/tools/todo.js';
 import { createBuiltInRegistry, runAgent } from '../src/agent/agent.js';
 import { createPermissions } from '../src/agent/permissions.js';
@@ -42,12 +39,26 @@ describe('mini-agent TypeScript test suite', () => {
     expect(registry.has('todo')).toBe(true);
   });
 
+  it('check tool executes successfully against a .ts file', async () => {
+    const workspace = await Workspace.open(process.cwd());
+    const env = { workspace };
+    const writeTool = createWriteTool(env);
+    const checkTool = createCheckTool(env);
+    const deleteTool = createDeleteTool(env);
+
+    await writeTool.execute({ path: 'test-check-file.ts', content: 'export const x: number = 42;' });
+    const result = await checkTool.execute({ path: 'test-check-file.ts' });
+    expect(result).toContain('exit_code: 0');
+
+    await deleteTool.execute({ path: 'test-check-file.ts' });
+  });
+
   it('edit tool handles CRLF vs LF line ending normalization', async () => {
     const workspace = await Workspace.open(process.cwd());
     const env = { workspace };
-    const writeTool = createWriteTool(env as any);
-    const editTool = createEditTool(env as any);
-    const readTool = createReadTool(env as any);
+    const writeTool = createWriteTool(env);
+    const editTool = createEditTool(env);
+    const readTool = createReadTool(env);
 
     await writeTool.execute({ path: 'test-crlf.txt', content: 'line1\r\nline2\r\nline3' });
     await editTool.execute({ path: 'test-crlf.txt', old_text: 'line2', new_text: 'line2-modified' });
@@ -55,7 +66,7 @@ describe('mini-agent TypeScript test suite', () => {
     const result = await readTool.execute({ path: 'test-crlf.txt' });
     expect(result).toContain('line2-modified');
 
-    const deleteTool = createDeleteTool(env as any);
+    const deleteTool = createDeleteTool(env);
     await deleteTool.execute({ path: 'test-crlf.txt' });
   });
 
@@ -80,7 +91,7 @@ describe('mini-agent TypeScript test suite', () => {
       model: 'mock-model',
       baseURL: 'http://localhost',
       apiKey: 'dummy',
-      async respond(request: any) {
+      async respond(_request: any) {
         stepCount++;
         if (stepCount === 1) {
           return {

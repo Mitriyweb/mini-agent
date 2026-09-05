@@ -1,5 +1,6 @@
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { INSTRUCTIONS } from './instructions.js';
+import { Workspace } from './workspace.js';
 import { createBashTool } from '../tools/bash.js';
 import { createCheckTool } from '../tools/check.js';
 import { createDeleteTool } from '../tools/delete.js';
@@ -13,6 +14,7 @@ import { createTodoTool } from '../tools/todo.js';
 import { createWriteTool } from '../tools/write.js';
 import { ToolRegistry } from '../tools/registry.js';
 import type { AgentEvent, AgentOptions, AgentResult } from '../types/agent.js';
+import type { ToolEnvironment } from '../types/tools.js';
 
 const MAX_RESULT_CHARS = 60_000;
 const LOG_RESULT_CHARS = 4_000;
@@ -64,17 +66,17 @@ export const parseToolArgs = (argsText: string): Record<string, any> | null => {
   }
 };
 
-export const createBuiltInRegistry = (env: { workspace: any }): ToolRegistry => {
+export const createBuiltInRegistry = (env: ToolEnvironment): ToolRegistry => {
   const registry = new ToolRegistry();
-  registry.register(createReadTool(env as any));
-  registry.register(createWriteTool(env as any));
-  registry.register(createEditTool(env as any));
-  registry.register(createPatchTool(env as any));
-  registry.register(createDeleteTool(env as any));
-  registry.register(createGlobTool(env as any));
-  registry.register(createGrepTool(env as any));
-  registry.register(createBashTool(env as any));
-  registry.register(createCheckTool(env as any));
+  registry.register(createReadTool(env));
+  registry.register(createWriteTool(env));
+  registry.register(createEditTool(env));
+  registry.register(createPatchTool(env));
+  registry.register(createDeleteTool(env));
+  registry.register(createGlobTool(env));
+  registry.register(createGrepTool(env));
+  registry.register(createBashTool(env));
+  registry.register(createCheckTool(env));
   registry.register(createFetchTool());
   registry.register(createTodoTool());
   return registry;

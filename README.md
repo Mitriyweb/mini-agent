@@ -82,9 +82,23 @@ Options:
 - `glob`: Search files by wildcard/glob pattern.
 - `grep`: Search file contents using regular expressions.
 - `bash`: Run shell commands in the workspace root.
-- `check`: Run `bun run check` or project check scripts.
+- `check`: Run syntax/type checks (`bun x tsc --noEmit` or `bun run check`).
 - `fetch`: Fetch HTTP/HTTPS web documents.
 - `todo`: Maintain structured task tracking lists.
+
+---
+
+## Standalone Project Extraction
+
+`mini-agent` is stored with a dedicated `package.json`. You can move or copy the entire `mini-agent/` directory into a separate repository or location at any time:
+
+```bash
+cp -r mini-agent /path/to/new-repo
+cd /path/to/new-repo
+bun install
+bun run build
+bun run start -- -y "Your task"
+```
 
 ---
 
