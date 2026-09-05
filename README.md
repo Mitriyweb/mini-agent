@@ -75,7 +75,7 @@ Options:
 - `glob`: Search files by wildcard/glob pattern.
 - `grep`: Search file contents using regular expressions.
 - `bash`: Run shell commands in the workspace root.
-- `check`: Run `npm run check` or project check scripts.
+- `check`: Run `bun run check` or project check scripts.
 - `fetch`: Fetch HTTP/HTTPS web documents.
 - `todo`: Maintain structured task tracking lists.
 
@@ -86,7 +86,7 @@ Options:
 To run `mini-agent` unit tests:
 
 ```bash
-npm test
+bun test
 # or
 node --test tests/*.test.js
 ```
@@ -100,6 +100,6 @@ node --test tests/*.test.js
 ```bash
 cp -r mini-agent /path/to/new-repo
 cd /path/to/new-repo
-npm install
-npm start -- -y "Your task"
+bun install
+bun start -- -y "Your task"
 ```

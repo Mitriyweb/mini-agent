@@ -25,7 +25,7 @@ const checkTool = (environment) => {
     trust: (args) => (hasPath(args) ? 'path' : 'command'),
     describe(args) {
       if (hasPath(args)) return `check ${args.path}`;
-      return 'npm run check';
+      return 'bun run check';
     },
     async execute(args) {
       if (hasPath(args)) {
@@ -38,7 +38,7 @@ const checkTool = (environment) => {
           'No scripts.check in package.json; pass path for node --check.',
         );
       }
-      return runFile('npm', ['run', 'check'], workspace.root);
+      return runFile('bun', ['run', 'check'], workspace.root);
     },
   };
 };

@@ -7,7 +7,7 @@ const { isError, isHashObject, jsonParse } = require('metautil');
 
 const { registry } = require('./tools.js');
 
-const INSTRUCTIONS_FILE = path.join(__dirname, 'instructions.md');
+const INSTRUCTIONS_FILE = path.join(__dirname, '..', 'prompts', 'system.md');
 const INSTRUCTIONS = fs.readFileSync(INSTRUCTIONS_FILE, 'utf8').trim();
 const MAX_RESULT_CHARS = 60_000;
 const LOG_RESULT_CHARS = 4_000;
