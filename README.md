@@ -55,6 +55,15 @@ bun install
 bun run build
 ```
 
+To bump the package version:
+
+```bash
+bun run bump:version -- patch
+```
+
+Use `minor` or `major` instead of `patch` when appropriate. The version is
+stored in `package.json` and is used by the CLI `--version` output.
+
 ### 3. Run `mini-agent`
 
 #### Single CLI Task:

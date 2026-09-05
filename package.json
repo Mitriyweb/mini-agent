@@ -19,6 +19,7 @@
     "test": "bun test",
     "check": "bun x tsc --noEmit",
     "verify": "sh scripts/verify.sh",
+    "bump:version": "bun run scripts/bump-version.ts",
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "dependencies": {

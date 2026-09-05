@@ -41,6 +41,26 @@ For each changed file, check for violations and categorize:
 
 If critical or high issues are found -> fix them before proceeding.
 
+Before staging files, ask the user explicitly:
+
+> Increase the package version and publish a tag/release for this commit? If yes, choose `patch`, `minor`, or `major`.
+
+Do not bump the version, create a tag, push, or create a release without an explicit user approval. If approved, run the matching command before validation:
+
+```bash
+bun run bump:version -- patch
+```
+
+Replace `patch` with the approved level. Include the updated `package.json` in the commit. After the commit succeeds, create and push the tag. The existing release workflow creates the GitHub Release and uploads the platform binaries automatically:
+
+```bash
+tag="v$(node -p "JSON.parse(require('fs').readFileSync('package.json')).version")"
+git tag "$tag"
+git push origin HEAD "$tag"
+```
+
+If the user declines, create only the normal commit and do not create tags or releases.
+
 ### Run Validation Pipeline
 
 ```bash
