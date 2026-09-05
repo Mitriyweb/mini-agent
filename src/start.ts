@@ -10,6 +10,7 @@ import { createProvider } from './agent/llm.js';
 import { createPermissions } from './agent/permissions.js';
 import { Workspace } from './agent/workspace.js';
 import type { AgentEvent } from './types/agent.js';
+import packageJson from '../package.json' with { type: 'json' };
 
 const color = (concolor as any)({
   info: 'b,blue',
@@ -21,6 +22,7 @@ const color = (concolor as any)({
 });
 
 const DEFAULT_MAX_STEPS = 30;
+const VERSION = packageJson.version;
 
 export interface ParsedCLIOptions {
   autoApprove: boolean;
@@ -29,12 +31,14 @@ export interface ParsedCLIOptions {
   customUrl?: string;
   maxSteps: number;
   help: boolean;
+  version: boolean;
   task: string;
 }
 
 export const printHelp = () => {
   console.log(`
 mini-agent - Compact modular coding agent harness
+  Version: ${VERSION}
 
 Usage:
   mini-agent [options] [task...]
@@ -45,6 +49,7 @@ Options:
   --model <model_id>          Override model ID (default: model-router-auto)
   --url <base_url>            Override API base URL (default: http://localhost:8787/v1)
   --max-steps <number>        Max agent execution steps (default: 30)
+  -v, --version               Show the installed version
   -h, --help                  Show this help text
 `);
 };
@@ -62,6 +67,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         model: { type: 'string' },
         url: { type: 'string' },
         'max-steps': { type: 'string', default: '30' },
+        version: { type: 'boolean', short: 'v', default: false },
         help: { type: 'boolean', short: 'h', default: false },
       },
       allowPositionals: true,
@@ -73,6 +79,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     const customModel = (parsed.values.model as string | undefined) || process.env.MODEL;
     const customUrl = (parsed.values.url as string | undefined) || process.env.OPENAI_BASE_URL;
     const maxSteps = parseInt((parsed.values['max-steps'] as string) || '30', 10) || DEFAULT_MAX_STEPS;
+    const version = Boolean(parsed.values.version);
 
     let workspaceDir = (parsed.values.dir as string | undefined) || process.cwd();
     const positionals = parsed.positionals;
@@ -99,6 +106,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       customUrl,
       maxSteps,
       help,
+      version,
       task: taskParts.join(' ').trim(),
     };
   } catch {
@@ -109,6 +117,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     let customUrl = process.env.OPENAI_BASE_URL;
     let maxSteps = DEFAULT_MAX_STEPS;
     let help = false;
+    let version = false;
     const taskParts: string[] = [];
 
     for (let i = 0; i < args.length; i++) {
@@ -117,6 +126,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         autoApprove = true;
       } else if (arg === '-h' || arg === '--help') {
         help = true;
+      } else if (arg === '-v' || arg === '--version') {
+        version = true;
       } else if (arg === '--dir' && i + 1 < args.length) {
         workspaceDir = args[++i];
       } else if (arg === '--model' && i + 1 < args.length) {
@@ -144,6 +155,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       customUrl,
       maxSteps,
       help,
+      version,
       task: taskParts.join(' ').trim(),
     };
   }
@@ -186,6 +198,11 @@ export const main = async () => {
     return;
   }
 
+  if (options.version) {
+    console.log(VERSION);
+    return;
+  }
+
   const workspace = await Workspace.open(options.workspaceDir);
 
   const workflows = await loadWorkflows(workspace.root);
@@ -199,7 +216,7 @@ export const main = async () => {
   const permissions = createPermissions({ autoApprove: options.autoApprove }, workspace);
 
   console.log(color.info('=================================================='));
-  console.log(color.info('           mini-agent (model-router)             '));
+  console.log(color.info(`           mini-agent v${VERSION} (model-router)  `));
   console.log(color.info('=================================================='));
   console.log(`Workspace : ${workspace.root}`);
   console.log(`Base URL  : ${provider.baseURL}`);

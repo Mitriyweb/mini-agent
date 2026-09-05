@@ -5,4 +5,4 @@ config.js
 *.log
 .env
 .*.bun
-.18d281b3ffdff1f5-00000000.bun-build
+.*.bun-build
