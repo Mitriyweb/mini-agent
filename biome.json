@@ -3,6 +3,12 @@
   "files": {
     "includes": ["src/**/*.ts", "tests/**/*.ts"]
   },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "defaultBranch": "main",
+    "useIgnoreFile": true
+  },
   "formatter": {
     "enabled": false
   },

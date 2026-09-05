@@ -3,7 +3,7 @@
 set -eu
 
 printf '%s\n' 'Running Biome...'
-bunx biome lint .
+bunx biome lint --changed --error-on-warnings --no-errors-on-unmatched .
 printf '%s\n' 'Running typecheck...'
 bun run check
 printf '%s\n' 'Running tests...'

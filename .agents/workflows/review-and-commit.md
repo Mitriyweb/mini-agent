@@ -48,16 +48,10 @@ Before staging files, ask the user explicitly:
 Do not bump the version, create a tag, push, or create a release without an explicit user approval. If approved, run the matching command before validation:
 
 ```bash
-bun run bump:version -- patch
+bun run release -- patch
 ```
 
-Replace `patch` with the approved level. Include the updated `package.json` in the commit. After the commit succeeds, create and push the tag. The existing release workflow creates the GitHub Release and uploads the platform binaries automatically:
-
-```bash
-tag="v$(node -p "JSON.parse(require('fs').readFileSync('package.json')).version")"
-git tag "$tag"
-git push origin HEAD "$tag"
-```
+Replace `patch` with the approved level. This command updates `package.json`, runs `bun run verify`, creates the version commit and tag, pushes both, and creates the GitHub Release. The existing release workflow then uploads the platform binaries automatically.
 
 If the user declines, create only the normal commit and do not create tags or releases.
 

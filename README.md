@@ -65,6 +65,14 @@ bun run bump:version -- patch
 Use `minor` or `major` instead of `patch` when appropriate. The version is
 stored in `package.json` and is used by the CLI `--version` output.
 
+To bump the version, create a tag, and publish a GitHub Release:
+
+```bash
+bun run release -- patch
+```
+
+This requires authenticated GitHub CLI (`gh`) and a clean staging area.
+
 ### 3. Run `mini-agent`
 
 #### Single CLI Task:
