@@ -34,6 +34,22 @@ These are the default coding standards for every task. Apply them unless the pro
 - Use `async`/`await` consistently and handle rejected promises.
 - Run independent asynchronous operations in parallel when there is no ordering dependency.
 
+## Rust
+
+- Prefer clear ownership and borrowing over unnecessary cloning or shared mutable state.
+- Use `Result` and `Option` deliberately; handle errors instead of calling `unwrap` or `expect` in production paths.
+- Use descriptive types and enums to model domain states rather than stringly typed values.
+- Keep modules focused and run `cargo fmt`, `cargo clippy`, and `cargo test` when available.
+- Avoid unsafe code unless it is necessary, isolated, and documented with its safety requirements.
+
+## Python
+
+- Use descriptive `snake_case` names for functions and variables and `PascalCase` for classes.
+- Add type hints to public functions and important data structures; avoid untyped `Any` when a precise type is possible.
+- Prefer small pure functions and immutable values where practical; avoid hidden global state.
+- Handle exceptions at meaningful boundaries and never use bare `except` blocks.
+- Follow the project's configured formatter and linter, and run its test command when available.
+
 ## Errors and Boundaries
 
 - Validate inputs at module and tool boundaries.
