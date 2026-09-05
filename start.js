@@ -102,7 +102,6 @@ const main = async () => {
   if (options.customUrl) providerOptions.baseURL = options.customUrl;
 
   const provider = createProvider(providerOptions);
-  const permissions = createPermissions({ autoApprove: options.autoApprove });
 
   console.log(color.info('=================================================='));
   console.log(color.info('           mini-agent (model-router)             '));
@@ -116,6 +115,7 @@ const main = async () => {
   const onEvent = createEventHandler();
 
   if (options.task) {
+    const permissions = createPermissions({ autoApprove: options.autoApprove });
     console.log(color.cyan(`Task: ${options.task}\n`));
     try {
       await runAgent({
@@ -140,6 +140,7 @@ const main = async () => {
     input: process.stdin,
     output: process.stdout,
   });
+  const permissions = createPermissions({ autoApprove: options.autoApprove, rl });
 
   let priorMessages = null;
 

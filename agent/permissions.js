@@ -102,11 +102,17 @@ const toolLeavesTrustRoot = (tool, args) => {
 const createPermissions = (options = {}) => {
   const autoApprove = options.autoApprove ?? false;
   const ask = options.ask;
-  const usePrompt = !autoApprove && typeof ask !== 'function';
-  let rl = null;
-  if (usePrompt) {
-    rl = createInterface({ input: process.stdin, output: process.stdout });
-  }
+  let rl = options.rl ?? null;
+  let ownsRl = false;
+
+  const getRl = () => {
+    if (!rl) {
+      rl = createInterface({ input: process.stdin, output: process.stdout });
+      ownsRl = true;
+    }
+    return rl;
+  };
+
   return {
     async approve(tool, args) {
       if (!tool.needsApproval || autoApprove) return true;
@@ -114,11 +120,16 @@ const createPermissions = (options = {}) => {
       const description = tool.describe(args);
       if (typeof ask === 'function') return ask(description);
       const prompt = color.warn(`\nApprove: ${description}? [y/N] `);
-      const answer = await rl.question(prompt);
+      const answer = await getRl().question(prompt);
       const normalized = answer.trim().toLowerCase();
       return APPROVE_ANSWERS.includes(normalized);
     },
-    close: () => rl?.close(),
+    close: () => {
+      if (ownsRl && rl) {
+        rl.close();
+        rl = null;
+      }
+    },
   };
 };
 

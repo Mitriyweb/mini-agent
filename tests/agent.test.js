@@ -8,6 +8,7 @@ const fs = require('node:fs/promises');
 
 const { registry } = require('../agent/tools.js');
 const { createProvider } = require('../agent/llm.js');
+const { createPermissions } = require('../agent/permissions.js');
 const { openWorkspace, workspace } = require('../agent/workspace.js');
 const { parseArgs } = require('../start.js');
 
@@ -74,5 +75,40 @@ describe('mini-agent tests', () => {
     assert.strictEqual(parsed.workspaceDir, '/tmp');
     assert.strictEqual(parsed.customModel, 'codestral-latest');
     assert.strictEqual(parsed.task, 'Refactor code');
+  });
+
+  test('permissions.js handles autoApprove and custom ask or rl', async () => {
+    const permsAuto = createPermissions({ autoApprove: true });
+    const mockTool = { needsApproval: true, trust: () => 'always', describe: () => 'test tool' };
+    const approvedAuto = await permsAuto.approve(mockTool, {});
+    assert.strictEqual(approvedAuto, true);
+    permsAuto.close();
+
+    let askedDescription = null;
+    const permsAsk = createPermissions({
+      autoApprove: false,
+      ask: (desc) => {
+        askedDescription = desc;
+        return true;
+      },
+    });
+    const approvedAsk = await permsAsk.approve(mockTool, {});
+    assert.strictEqual(approvedAsk, true);
+    assert.strictEqual(askedDescription, 'test tool');
+    permsAsk.close();
+
+    let mockQuestionCalled = false;
+    const mockRl = {
+      question: async () => {
+        mockQuestionCalled = true;
+        return 'y';
+      },
+      close: () => {},
+    };
+    const permsRl = createPermissions({ autoApprove: false, rl: mockRl });
+    const approvedRl = await permsRl.approve(mockTool, {});
+    assert.strictEqual(approvedRl, true);
+    assert.strictEqual(mockQuestionCalled, true);
+    permsRl.close();
   });
 });
