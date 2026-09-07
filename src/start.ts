@@ -5,6 +5,7 @@ import { parseArgs as parseNodeArgs } from 'node:util';
 import concolor from 'concolor';
 
 import { errorText, runAgent } from './agent/agent.js';
+import { createCompleter } from './agent/completer.js';
 import { loadWorkflows, loadSkills, resolveWorkflowCommand } from './agent/customizations.js';
 import { createProvider } from './agent/llm.js';
 import { createPermissions } from './agent/permissions.js';
@@ -272,7 +273,12 @@ export const main = async () => {
   }
 
   // Interactive REPL mode
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const completer = createCompleter({
+    workspaceRoot: workspace.root,
+    workflows,
+    skills,
+  });
+  const rl = createInterface({ input: process.stdin, output: process.stdout, completer });
   const permissionsRepl = createPermissions({ autoApprove: options.autoApprove, rl }, workspace);
   const removeInterruptHandlerRepl = installInterruptHandler(() => {
     rl.close();
