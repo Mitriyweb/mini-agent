@@ -72,6 +72,41 @@ export const tokenizeCommand = (command: string): string[] => {
 };
 
 /**
+ * Checks whether a command contains unsafe shell constructs that prevent safe
+ * wildcard matching (e.g. command substitution, backticks, newlines, subshells, or redirects).
+ */
+export const hasUnsafeShellSyntax = (command: string): boolean => {
+  let inSingle = false;
+  let inDouble = false;
+
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i];
+    const nextChar = command[i + 1];
+
+    if (char === "'" && !inDouble) {
+      inSingle = !inSingle;
+    } else if (char === '"' && !inSingle) {
+      inDouble = !inDouble;
+    } else if (char === '\n' || char === '\r') {
+      return true;
+    } else if (char === '`') {
+      return true;
+    } else if (!inSingle) {
+      if (char === '$' && nextChar === '(') {
+        return true;
+      }
+      if (!inDouble) {
+        if (char === '>' || char === '<' || char === '(' || char === ')') {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+};
+
+/**
  * Splits a compound shell command by control operators (&&, ||, ;, |, &)
  * outside of quotes.
  */
@@ -219,8 +254,13 @@ export const matchTokenSequence = (patTokens: string[], subTokens: string[]): bo
 
 /**
  * Checks if a single subcommand matches a glob pattern.
+ * Fail closed if the subcommand contains unsafe shell syntax (substitutions, redirects, etc.).
  */
 export const matchesGlob = (pattern: string, subcommand: string): boolean => {
+  if (hasUnsafeShellSyntax(subcommand)) {
+    return false;
+  }
+
   const normPattern = normalizeCommand(pattern);
   const normSubcommand = normalizeCommand(subcommand);
 

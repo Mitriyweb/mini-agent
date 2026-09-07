@@ -23,21 +23,31 @@ export class PermissionStore {
         return { version: 1, rules: [] };
       }
 
-      const version = typeof parsed.version === 'number' ? parsed.version : 1;
+      if (parsed.version !== 1) {
+        console.warn(`[PermissionStore] Unsupported permissions config version ${parsed.version} in ${this.configPath}. Expected version 1.`);
+        return { version: 1, rules: [] };
+      }
+
       const rawRules = Array.isArray(parsed.rules) ? parsed.rules : [];
 
       const rules: PermissionRule[] = rawRules
-        .filter((r: any) => r && typeof r === 'object' && typeof r.pattern === 'string' && (r.effect === 'allow' || r.effect === 'deny'))
+        .filter((r: any) => {
+          if (!r || typeof r !== 'object') return false;
+          if (typeof r.pattern !== 'string' || r.pattern.trim().length === 0) return false;
+          if (r.effect !== 'allow' && r.effect !== 'deny') return false;
+          if (r.match !== 'exact' && r.match !== 'glob') return false;
+          return true;
+        })
         .map((r: any) => ({
           id: r.id ?? undefined,
-          effect: r.effect === 'deny' ? 'deny' : 'allow',
+          effect: r.effect,
           pattern: r.pattern,
-          match: r.match === 'exact' ? 'exact' : 'glob',
+          match: r.match,
           scope: 'persistent',
           createdAt: typeof r.createdAt === 'number' ? r.createdAt : undefined,
         }));
 
-      return { version, rules };
+      return { version: 1, rules };
     } catch (err) {
       console.warn(`[PermissionStore] Failed to parse permissions config from ${this.configPath}: ${err}. Returning empty config.`);
       return { version: 1, rules: [] };
@@ -64,7 +74,7 @@ export class PermissionStore {
         return item;
       });
 
-    const output = JSON.stringify({ version: config.version || 1, rules: persistentRules }, null, 2) + '\n';
+    const output = JSON.stringify({ version: 1, rules: persistentRules }, null, 2) + '\n';
     const tmpPath = `${this.configPath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`;
 
     try {
@@ -86,7 +96,7 @@ export class PermissionStore {
       createdAt: rule.createdAt ?? Date.now(),
     };
 
-    // Avoid duplicate exact rule
+    // Avoid duplicate rule
     const exists = config.rules.some(
       (r) => r.effect === newRule.effect && r.pattern === newRule.pattern && r.match === newRule.match
     );

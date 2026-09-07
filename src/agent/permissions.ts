@@ -100,6 +100,7 @@ export const createPermissions = (
 ): Permissions => {
   const autoApprove = options.autoApprove ?? false;
   const ask = options.ask;
+  const askDecision = options.askDecision;
   let rl = options.rl ?? null;
   let ownsRl = false;
 
@@ -112,7 +113,7 @@ export const createPermissions = (
   const manager: PermissionManager = options.manager ?? new PermissionManager({ configPath });
 
   const getRl = (): ReadlineInterface => {
-    if (!rl) {
+    if (!rl || (rl as any).closed) {
       rl = createInterface({ input: process.stdin, output: process.stdout });
       ownsRl = true;
     }
@@ -136,57 +137,88 @@ export const createPermissions = (
       if (evalResult === 'allow') return true;
       if (evalResult === 'deny') return false;
 
-      // 2. Custom ask callback (e.g. for non-interactive custom test harnesses)
+      const candidates = manager.generatePatternCandidates(targetStr);
+
+      // 2. Custom decision callback
+      if (typeof askDecision === 'function') {
+        const res = await askDecision({ description, command: targetStr, candidates });
+        if (typeof res === 'boolean') {
+          return res;
+        }
+        if (res && typeof res === 'object') {
+          if (res.kind === 'allow-once') return true;
+          if (res.kind === 'deny') return false;
+
+          const pattern = res.pattern || targetStr;
+          const match = res.match || 'exact';
+          const rule = { effect: 'allow' as const, pattern, match };
+
+          if (res.kind === 'allow-session') {
+            manager.addSessionRule(rule);
+            return true;
+          }
+          if (res.kind === 'allow-persistent') {
+            manager.addPersistentRule(rule);
+            return true;
+          }
+        }
+        return false;
+      }
+
+      // 3. Custom simple ask callback (legacy / basic test callback)
       if (typeof ask === 'function') {
         return Boolean(await ask(description));
       }
 
-      // 3. Interactive prompt UX
-      const activeRl = getRl();
-      console.log(color.warn(`\nCommand requires approval:`));
-      console.log(`  ${targetStr}\n`);
-      console.log(`1. Allow once`);
-      console.log(`2. Allow for this session`);
-      console.log(`3. Allow always`);
-      console.log(`4. Reject\n`);
+      // 4. Interactive prompt UX
+      try {
+        const activeRl = getRl();
+        console.log(color.warn(`\nCommand requires approval:`));
+        console.log(`  ${targetStr}\n`);
+        console.log(`1. Allow once`);
+        console.log(`2. Allow for this session`);
+        console.log(`3. Allow always`);
+        console.log(`4. Reject\n`);
 
-      const answer = await activeRl.question(color.warn('Select an option [1-4] (default 4): '));
-      const choice = answer.trim().toLowerCase();
+        const answer = await activeRl.question(color.warn('Select an option [1-4] (default 4): '));
+        const choice = answer.trim().toLowerCase();
 
-      if (choice === '1' || choice === 'y' || choice === 'yes') {
-        return true;
-      }
-
-      if (choice === '2' || choice === '3') {
-        const isAlways = choice === '3';
-        const candidates = manager.generatePatternCandidates(targetStr);
-
-        let selectedPattern = targetStr;
-        let selectedMatch: 'exact' | 'glob' = 'exact';
-
-        if (candidates.length > 1) {
-          console.log(`\nSelect pattern to allow:`);
-          candidates.forEach((cand, idx) => {
-            console.log(`  ${idx + 1}. ${cand.label}`);
-          });
-          const patAnswer = await activeRl.question(color.warn(`Select pattern [1-${candidates.length}] (default 1): `));
-          const patIdx = parseInt(patAnswer.trim(), 10) - 1;
-          const chosen = (patIdx >= 0 && patIdx < candidates.length) ? candidates[patIdx] : candidates[0];
-          selectedPattern = chosen.pattern;
-          selectedMatch = chosen.match;
-        } else if (candidates.length === 1) {
-          selectedPattern = candidates[0].pattern;
-          selectedMatch = candidates[0].match;
+        if (choice === '1' || choice === 'y' || choice === 'yes') {
+          return true;
         }
 
-        const rule = { effect: 'allow' as const, pattern: selectedPattern, match: selectedMatch };
-        if (isAlways) {
-          manager.addPersistentRule(rule);
-        } else {
-          manager.addSessionRule(rule);
-        }
+        if (choice === '2' || choice === '3') {
+          const isAlways = choice === '3';
 
-        return true;
+          let selectedPattern = targetStr;
+          let selectedMatch: 'exact' | 'glob' = 'exact';
+
+          if (candidates.length > 1) {
+            console.log(`\nSelect pattern to allow:`);
+            candidates.forEach((cand, idx) => {
+              console.log(`  ${idx + 1}. ${cand.label}`);
+            });
+            const patAnswer = await activeRl.question(color.warn(`Select pattern [1-${candidates.length}] (default 1): `));
+            const patIdx = parseInt(patAnswer.trim(), 10) - 1;
+            const chosen = (patIdx >= 0 && patIdx < candidates.length) ? candidates[patIdx] : candidates[0];
+            selectedPattern = chosen.pattern;
+            selectedMatch = chosen.match;
+          } else if (candidates.length === 1) {
+            selectedPattern = candidates[0].pattern;
+            selectedMatch = candidates[0].match;
+          }
+
+          const rule = { effect: 'allow' as const, pattern: selectedPattern, match: selectedMatch };
+          if (isAlways) {
+            manager.addPersistentRule(rule);
+          } else {
+            manager.addSessionRule(rule);
+          }
+
+          return true;
+        }
+      } catch {
+        return false;
       }
 
       return false;

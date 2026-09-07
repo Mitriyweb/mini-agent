@@ -18,9 +18,28 @@ export interface PermissionConfig {
   rules: PermissionRule[];
 }
 
+export type PermissionDecisionKind = 'allow-once' | 'allow-session' | 'allow-persistent' | 'deny';
+
+export interface PermissionDecision {
+  kind: PermissionDecisionKind;
+  pattern?: string;
+  match?: PermissionMatchKind;
+}
+
+export interface PermissionPromptContext {
+  description: string;
+  command?: string;
+  candidates: { label: string; pattern: string; match: PermissionMatchKind }[];
+}
+
+export type AskDecisionCallback = (
+  context: PermissionPromptContext
+) => Promise<PermissionDecision | boolean> | PermissionDecision | boolean;
+
 export interface PermissionsOptions {
   autoApprove?: boolean;
   ask?: (description: string) => Promise<boolean> | boolean;
+  askDecision?: AskDecisionCallback;
   rl?: import('node:readline/promises').Interface | null;
   configPath?: string;
   manager?: any; // PermissionManager instance

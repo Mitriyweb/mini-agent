@@ -167,10 +167,12 @@ A specific `deny` rule always overrides broader `allow` rules. For example, if `
 - `git status` is allowed.
 - `git push origin main` is denied.
 
-### Shell Command Chaining Safety
+### Shell Command Chaining Safety & Fail-Closed Policy
 
 For compound shell commands using chaining operators (`&&`, `||`, `;`, `|`, `&`), each subcommand is evaluated independently against permission rules (fail-closed model).
 - Allowing `git commit *` will NOT automatically allow `git commit -m "fix" && rm -rf /`.
+
+Wildcard patterns (`git *`, `git commit *`) also strictly fail-closed if a command contains unsafe shell syntax such as command substitution (`$()`, backticks \`...\`), multi-line newlines, or redirection operators (`>`, `>>`, `<`, `2>`).
 
 ### Persistent Configuration Format
 

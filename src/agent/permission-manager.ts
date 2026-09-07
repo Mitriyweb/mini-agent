@@ -45,9 +45,10 @@ export class PermissionManager {
   addPersistentRule(rule: PermissionRule): void {
     if (this.store) {
       this.store.addRule(rule);
+    } else {
+      // Fallback if no store attached
+      this.addSessionRule({ ...rule, scope: 'persistent' });
     }
-    // Also add to session so current process uses it immediately
-    this.addSessionRule({ ...rule, scope: 'persistent' });
   }
 
   evaluate(command: string): 'allow' | 'deny' | 'undecided' {

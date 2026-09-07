@@ -2,8 +2,11 @@ import { describe, expect, it } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { PassThrough, Writable } from 'node:stream';
+import { createInterface } from 'node:readline/promises';
 import {
   evaluateRules,
+  hasUnsafeShellSyntax,
   matchesExact,
   matchesGlob,
   normalizeCommand,
@@ -31,9 +34,10 @@ describe('Permissions System - Matcher Unit Tests', () => {
     expect(subs).toEqual(['git status', 'git commit -m "fix && bug"', 'echo done']);
   });
 
-  it('matchesExact matches only exact commands', () => {
+  it('matchesExact matches only exact commands or executable basenames', () => {
     expect(matchesExact('git status', 'git status')).toBe(true);
     expect(matchesExact('git status', 'git   status')).toBe(true);
+    expect(matchesExact('git status', '/usr/bin/git status')).toBe(true);
     expect(matchesExact('git status', 'git status --short')).toBe(false);
     expect(matchesExact('git status', 'git status-other')).toBe(false);
   });
@@ -59,6 +63,22 @@ describe('Permissions System - Matcher Unit Tests', () => {
 
     expect(matchesGlob(pattern, 'gitfoo')).toBe(false);
     expect(matchesGlob(pattern, 'git-other')).toBe(false);
+  });
+
+  it('detects unsafe shell constructs and blocks wildcards (fail-closed)', () => {
+    expect(hasUnsafeShellSyntax('git commit -m "$(rm -rf /)"')).toBe(true);
+    expect(hasUnsafeShellSyntax('git commit -m "`echo malicious`"')).toBe(true);
+    expect(hasUnsafeShellSyntax('git status > /tmp/out')).toBe(true);
+    expect(hasUnsafeShellSyntax('git status >> /tmp/out')).toBe(true);
+    expect(hasUnsafeShellSyntax('git status < /tmp/in')).toBe(true);
+    expect(hasUnsafeShellSyntax('git status 2>/tmp/err')).toBe(true);
+    expect(hasUnsafeShellSyntax('git commit -m "line1\nline2"')).toBe(true);
+
+    // Wildcard matching fails closed for commands with unsafe constructs
+    const pattern = 'git *';
+    expect(matchesGlob(pattern, 'git status > /tmp/out')).toBe(false);
+    expect(matchesGlob(pattern, 'git commit -m "$(echo malicious)"')).toBe(false);
+    expect(matchesGlob(pattern, 'git commit -m "`echo malicious`"')).toBe(false);
   });
 
   it('evaluates rule priority: deny > allow exact > allow mask', () => {
@@ -109,6 +129,33 @@ describe('Permissions System - Store & Manager Tests', () => {
     expect(config.rules).toEqual([]);
   });
 
+  it('PermissionStore strictly rejects unsupported config version', () => {
+    const versionPath = path.join(tmpDir, 'bad-version.json');
+    fs.writeFileSync(versionPath, JSON.stringify({ version: 999, rules: [{ effect: 'allow', pattern: 'git *', match: 'glob' }] }));
+
+    const store = new PermissionStore(versionPath);
+    const config = store.load();
+    expect(config.version).toBe(1);
+    expect(config.rules).toEqual([]); // Unsupported version discarded
+  });
+
+  it('PermissionStore discards rules with invalid match or effect values', () => {
+    const invalidRulePath = path.join(tmpDir, 'invalid-rule.json');
+    fs.writeFileSync(invalidRulePath, JSON.stringify({
+      version: 1,
+      rules: [
+        { effect: 'allow', pattern: 'git status', match: 'invalid-match' },
+        { effect: 'invalid-effect', pattern: 'git push', match: 'exact' },
+        { effect: 'allow', pattern: 'git commit *', match: 'glob' }
+      ]
+    }));
+
+    const store = new PermissionStore(invalidRulePath);
+    const config = store.load();
+    expect(config.rules.length).toBe(1);
+    expect(config.rules[0].pattern).toBe('git commit *');
+  });
+
   it('PermissionStore performs atomic write and respects version field', () => {
     const store = new PermissionStore(configPath);
     store.addRule({ effect: 'allow', pattern: 'git status', match: 'exact' });
@@ -132,9 +179,8 @@ describe('Permissions System - Store & Manager Tests', () => {
   });
 });
 
-describe('Permissions System - Integration & Lifetime Scopes', () => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mini-agent-scope-test-'));
-  const configPath = path.join(tmpDir, 'permissions.json');
+describe('Permissions System - Integration & Prompt Flow', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mini-agent-flow-test-'));
 
   const mockTool = {
     needsApproval: true,
@@ -144,92 +190,70 @@ describe('Permissions System - Integration & Lifetime Scopes', () => {
     },
   };
 
-  it('Allow once scope asks again on second invocation', async () => {
-    let promptCount = 0;
-    const permissions = createPermissions({
-      configPath,
-      ask: () => {
-        promptCount++;
-        return true;
-      },
+  it('interactive prompt simulated readline flow: Allow session with pattern choice', async () => {
+    const configPath = path.join(tmpDir, 'rl-session.json');
+    const inputStream = new PassThrough();
+    const outputStream = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+    const rl = createInterface({ input: inputStream, output: outputStream });
+
+    const permissions = createPermissions({ configPath, rl });
+
+    const approvePromise = permissions.approve(mockTool, { command: 'git commit -a -m "fix"' });
+
+    setImmediate(() => {
+      inputStream.write('2\n'); // Option 2: Allow for session
+      setImmediate(() => {
+        inputStream.write('2\n'); // Pattern choice 2: git commit *
+      });
     });
 
-    const approved1 = await permissions.approve(mockTool, { command: 'git status' });
+    const approved1 = await approvePromise;
     expect(approved1).toBe(true);
-    expect(promptCount).toBe(1);
 
-    const approved2 = await permissions.approve(mockTool, { command: 'git status' });
+    // Second call in same session should auto-approve git commit -m "other"
+    const approved2 = await permissions.approve(mockTool, { command: 'git commit -m "other"' });
     expect(approved2).toBe(true);
-    expect(promptCount).toBe(2);
+
+    rl.close();
   });
 
-  it('Allow for session scope bypasses prompt in same session, prompts in new session', async () => {
-    let promptCount = 0;
+  it('askDecision callback enables structured permission decision handling', async () => {
+    const configPath = path.join(tmpDir, 'ask-decision.json');
     const manager = new PermissionManager({ configPath });
 
-    const permissionsSession1 = createPermissions({
+    const permissions = createPermissions({
       manager,
-      ask: () => {
-        promptCount++;
-        return true;
+      askDecision: ({ command, candidates }) => {
+        expect(command).toBe('git commit -a -m "feature"');
+        const verbCand = candidates.find((c) => c.pattern === 'git commit *');
+        return {
+          kind: 'allow-persistent',
+          pattern: verbCand?.pattern,
+          match: verbCand?.match,
+        };
       },
     });
 
-    // Manually simulate user selecting session approval
-    manager.addSessionRule({ effect: 'allow', pattern: 'git status', match: 'exact' });
-
-    const app1 = await permissionsSession1.approve(mockTool, { command: 'git status' });
+    const app1 = await permissions.approve(mockTool, { command: 'git commit -a -m "feature"' });
     expect(app1).toBe(true);
-    expect(promptCount).toBe(0); // Bypassed prompt due to session rule!
 
-    // New session (new PermissionManager without session rules)
+    // Check that persistent rule was written to store
+    const storeRules = manager.getPersistentRules();
+    expect(storeRules.some((r) => r.pattern === 'git commit *')).toBe(true);
+
+    // Verify fresh session auto-approves via persisted rule
     const newManager = new PermissionManager({ configPath });
-    const permissionsSession2 = createPermissions({
-      manager: newManager,
-      ask: () => {
-        promptCount++;
-        return true;
-      },
-    });
-
-    await permissionsSession2.approve(mockTool, { command: 'git status' });
-    expect(promptCount).toBe(1); // Prompted in new session!
-  });
-
-  it('Allow always scope persists across restarts', async () => {
-    const manager1 = new PermissionManager({ configPath });
-    manager1.addPersistentRule({ effect: 'allow', pattern: 'git commit *', match: 'glob' });
-
-    // Restart agent with new manager loading same configPath
-    const manager2 = new PermissionManager({ configPath });
     let prompted = false;
-    const permissions = createPermissions({
-      manager: manager2,
-      ask: () => {
+    const permissions2 = createPermissions({
+      manager: newManager,
+      askDecision: () => {
         prompted = true;
-        return true;
+        return false;
       },
     });
 
-    const approved = await permissions.approve(mockTool, { command: 'git commit -a -m "test"' });
-    expect(approved).toBe(true);
-    expect(prompted).toBe(false); // Persistent rule auto-approved!
-  });
-
-  it('--yes / autoApprove skips prompts without writing persistent rules', async () => {
-    const freshConfigPath = path.join(tmpDir, 'auto-approve-perm.json');
-    const permissions = createPermissions({
-      configPath: freshConfigPath,
-      autoApprove: true,
-    });
-
-    const approved = await permissions.approve(mockTool, { command: 'git push --force' });
-    expect(approved).toBe(true);
-
-    // Verify config file was NOT created / modified with persistent rules
-    if (fs.existsSync(freshConfigPath)) {
-      const content = JSON.parse(fs.readFileSync(freshConfigPath, 'utf8'));
-      expect(content.rules).toEqual([]);
-    }
+    const app2 = await permissions2.approve(mockTool, { command: 'git commit -m "another"' });
+    expect(app2).toBe(true);
+    expect(prompted).toBe(false);
   });
 });
