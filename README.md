@@ -16,7 +16,7 @@ A lightweight, modular coding agent harness compatible with **`model-router`** (
 - **Interactive & CLI Modes**:
   - Run a single task from CLI arguments with `bun run start -- -y "Task"`.
   - Or run in interactive CLI REPL mode for back-and-forth conversation.
-- **Safety & Containment**: Encapsulated `Workspace` class with lexical & realpath containment checks to prevent escaping the workspace directory. Interactive approval prompts before executing destructive tools.
+- **Safety & Containment**: Encapsulated `Workspace` class with lexical & realpath containment checks to prevent escaping the workspace directory. Granular permission system with `once`, `session`, and `always` scopes.
 - **Dependency Injection**: Pass workspace and permission gates directly to tools and agent loop.
 
 ---
@@ -126,9 +126,81 @@ Options:
 
 ---
 
+## Permissions & Approval System
+
+`mini-agent` features a granular, multi-level permission gate to control command execution safety (especially for `bash` operations).
+
+### Approval Options
+
+When a command requires confirmation, you can choose:
+
+1. **Allow once**: Authorize execution for the single current invocation. No permission rule is saved.
+2. **Allow for session**: Authorize for the duration of the current `mini-agent` process. Future matching commands in the same session run without prompts. Permissions expire when `mini-agent` exits.
+3. **Allow always**: Save a persistent rule to disk (`.mini-agent/permissions.json`). Rule applies in all future `mini-agent` runs.
+4. **Reject**: Deny command execution.
+
+### Matching Semantics
+
+You can allow exact commands or pattern/wildcard masks when selecting **Allow for session** or **Allow always**:
+
+#### 1. Exact Match
+Matches the exact normalized command line.
+- `git commit -a -m "fix"` matches only this exact invocation.
+- `git commit -a -m "other"` or `git push` will still prompt for approval.
+
+#### 2. Verb Wildcard Pattern (`git commit *`)
+Matches commands starting with specific subcommands/verbs.
+- Matches: `git commit -m "fix"`, `git commit -a -m "fix"`, `git commit --amend`.
+- Does NOT match: `git push` or `git commit-other`.
+
+#### 3. Binary Wildcard Pattern (`git *`)
+Matches any command invoking the given tool/binary.
+- Matches: `git status`, `git add .`, `git commit -m "fix"`, `git checkout main`.
+- Does NOT match: `gitfoo` or `git-other` due to strict argument/binary word boundaries.
+
+### Rule Evaluation Priority
+
+Rules are evaluated deterministically in the following precedence order:
+`deny > allow exact > allow mask`
+
+A specific `deny` rule always overrides broader `allow` rules. For example, if `allow: git *` and `deny: git push *` are defined:
+- `git status` is allowed.
+- `git push origin main` is denied.
+
+### Shell Command Chaining Safety
+
+For compound shell commands using chaining operators (`&&`, `||`, `;`, `|`, `&`), each subcommand is evaluated independently against permission rules (fail-closed model).
+- Allowing `git commit *` will NOT automatically allow `git commit -m "fix" && rm -rf /`.
+
+### Persistent Configuration Format
+
+Persistent permissions are saved in `.mini-agent/permissions.json` using atomic file writes:
+
+```json
+{
+  "version": 1,
+  "rules": [
+    {
+      "effect": "allow",
+      "pattern": "git commit *",
+      "match": "glob"
+    },
+    {
+      "effect": "allow",
+      "pattern": "git status",
+      "match": "exact"
+    }
+  ]
+}
+```
+
+Passing `-y`, `--yes`, or `--auto-approve` bypasses interactive prompts for non-interactive execution without saving persistent rules.
+
+---
+
 ## Standalone Project Extraction
 
-`mini-agent` is stored with a dedicated `package.json`. You can move or copy the entire `mini-agent/` directory into a separate repository or location at any time:
+`mini-agent` is stored in its own folder with a dedicated `package.json`. You can move or copy the entire `mini-agent/` directory into a separate repository or location at any time:
 
 ```bash
 cp -r mini-agent /path/to/new-repo
@@ -147,18 +219,5 @@ To run `mini-agent` unit tests and type checks:
 ```bash
 bun test
 # or
-node --test tests/*.test.js
-```
-
----
-
-## Standalone Project Extraction
-
-`mini-agent` is stored in its own folder (`mini-agent/`) with a dedicated `package.json`. You can move or copy the entire `mini-agent/` directory out of `model-router` into a separate repository at any time:
-
-```bash
-cp -r mini-agent /path/to/new-repo
-cd /path/to/new-repo
-bun install
-bun start -- -y "Your task"
+bun run check
 ```

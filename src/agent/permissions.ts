@@ -3,15 +3,18 @@ import path from 'node:path';
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline/promises';
 import concolor from 'concolor';
 import { isInside, Workspace } from './workspace.js';
+import { PermissionManager } from './permission-manager.js';
 import type { Tool } from '../types/tools.js';
 import type { Permissions, PermissionsOptions } from '../types/permissions.js';
 
 const color = (concolor as any)({
   warn: 'b,yellow',
+  info: 'b,blue',
+  cyan: 'b,cyan',
+  dim: 'gray',
 });
 
 const PATH_TOKEN_RE = /"([^"]*)"|'([^']*)'|`([^`]*)`|([^\s;|&<>()]+)/g;
-const APPROVE_ANSWERS = ['y', 'yes'];
 
 export const extractPathTokens = (command: string): string[] => {
   const tokens: string[] = [];
@@ -100,6 +103,14 @@ export const createPermissions = (
   let rl = options.rl ?? null;
   let ownsRl = false;
 
+  const configPath =
+    options.configPath ??
+    (workspace?.root
+      ? path.join(workspace.root, '.mini-agent', 'permissions.json')
+      : path.join(os.homedir(), '.mini-agent', 'permissions.json'));
+
+  const manager: PermissionManager = options.manager ?? new PermissionManager({ configPath });
+
   const getRl = (): ReadlineInterface => {
     if (!rl) {
       rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -109,17 +120,76 @@ export const createPermissions = (
   };
 
   return {
+    getManager: () => manager,
     async approve(tool: Tool, args: any): Promise<boolean> {
       if (!tool.needsApproval || autoApprove) return true;
       if (workspace && workspace.gitRoot && !toolLeavesTrustRoot(tool, args, workspace)) {
         return true;
       }
+
+      const commandTarget = typeof args?.command === 'string' ? args.command : null;
       const description = tool.describe ? tool.describe(args) : tool.definition.function.name;
-      if (typeof ask === 'function') return ask(description);
-      const prompt = color.warn(`\nApprove: ${description}? [y/N] `);
-      const answer = await getRl().question(prompt);
-      const normalized = answer.trim().toLowerCase();
-      return APPROVE_ANSWERS.includes(normalized);
+      const targetStr = commandTarget || description;
+
+      // 1. Evaluate stored permissions rules
+      const evalResult = manager.evaluate(targetStr);
+      if (evalResult === 'allow') return true;
+      if (evalResult === 'deny') return false;
+
+      // 2. Custom ask callback (e.g. for non-interactive custom test harnesses)
+      if (typeof ask === 'function') {
+        return Boolean(await ask(description));
+      }
+
+      // 3. Interactive prompt UX
+      const activeRl = getRl();
+      console.log(color.warn(`\nCommand requires approval:`));
+      console.log(`  ${targetStr}\n`);
+      console.log(`1. Allow once`);
+      console.log(`2. Allow for this session`);
+      console.log(`3. Allow always`);
+      console.log(`4. Reject\n`);
+
+      const answer = await activeRl.question(color.warn('Select an option [1-4] (default 4): '));
+      const choice = answer.trim().toLowerCase();
+
+      if (choice === '1' || choice === 'y' || choice === 'yes') {
+        return true;
+      }
+
+      if (choice === '2' || choice === '3') {
+        const isAlways = choice === '3';
+        const candidates = manager.generatePatternCandidates(targetStr);
+
+        let selectedPattern = targetStr;
+        let selectedMatch: 'exact' | 'glob' = 'exact';
+
+        if (candidates.length > 1) {
+          console.log(`\nSelect pattern to allow:`);
+          candidates.forEach((cand, idx) => {
+            console.log(`  ${idx + 1}. ${cand.label}`);
+          });
+          const patAnswer = await activeRl.question(color.warn(`Select pattern [1-${candidates.length}] (default 1): `));
+          const patIdx = parseInt(patAnswer.trim(), 10) - 1;
+          const chosen = (patIdx >= 0 && patIdx < candidates.length) ? candidates[patIdx] : candidates[0];
+          selectedPattern = chosen.pattern;
+          selectedMatch = chosen.match;
+        } else if (candidates.length === 1) {
+          selectedPattern = candidates[0].pattern;
+          selectedMatch = candidates[0].match;
+        }
+
+        const rule = { effect: 'allow' as const, pattern: selectedPattern, match: selectedMatch };
+        if (isAlways) {
+          manager.addPersistentRule(rule);
+        } else {
+          manager.addSessionRule(rule);
+        }
+
+        return true;
+      }
+
+      return false;
     },
     close: () => {
       if (ownsRl && rl) {
