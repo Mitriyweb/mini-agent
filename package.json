@@ -1,6 +1,6 @@
 {
   "name": "mini-agent",
-  "version": "0.1.9",
+  "version": "0.1.12",
   "private": true,
   "description": "A small modular coding agent harness compatible with model-router.",
   "type": "module",
@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "concolor": "1.1.4",
+    "js-yaml": "5.4.1",
     "openai": "4.86.0"
   },
   "devDependencies": {

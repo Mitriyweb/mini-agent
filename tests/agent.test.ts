@@ -6,7 +6,10 @@ import { createWriteTool } from '../src/tools/write.js';
 import { createEditTool } from '../src/tools/edit.js';
 import { createDeleteTool } from '../src/tools/delete.js';
 import { createCheckTool } from '../src/tools/check.js';
+import { createGlobTool } from '../src/tools/glob.js';
+import { createOpenspecTool } from '../src/tools/openspec.js';
 import { createTodoTool, TodoStatus } from '../src/tools/todo.js';
+import { createGrepTool } from '../src/tools/grep.js';
 import { createBuiltInRegistry, runAgent } from '../src/agent/agent.js';
 import { createPermissions } from '../src/agent/permissions.js';
 import { INSTRUCTIONS } from '../src/agent/instructions.js';
@@ -93,6 +96,59 @@ describe('mini-agent TypeScript test suite', () => {
 
     const deleteTool = createDeleteTool(env);
     await deleteTool.execute({ path: 'test-crlf.txt' });
+  });
+
+  it('glob tool treats blank patterns as a workspace-wide match instead of failing', async () => {
+    const workspace = await Workspace.open(process.cwd());
+    const globTool = createGlobTool({ workspace });
+
+    await expect(globTool.execute({ pattern: '   ' })).resolves.toContain('README.md');
+  });
+
+  it('grep tool rejects empty and whitespace-only patterns', async () => {
+    const workspace = await Workspace.open(process.cwd());
+    const grepTool = createGrepTool({ workspace });
+
+    await expect(grepTool.execute({ pattern: '' })).resolves.toBe('No matches: grep pattern is empty.');
+    await expect(grepTool.execute({ pattern: '   ' })).resolves.toBe('No matches: grep pattern is empty.');
+  });
+
+  it('openspec tool reads YAML specs and exposes paths and operations', async () => {
+    const workspace = await Workspace.open(process.cwd());
+    const env = { workspace };
+    const writeTool = createWriteTool(env);
+    const openspecTool = createOpenspecTool(env);
+
+    const yaml = `openapi: 3.0.0
+info:
+  title: Demo API
+  version: 1.0.0
+paths:
+  /users:
+    get:
+      summary: List users
+      responses:
+        '200':
+          description: OK
+`;
+
+    await writeTool.execute({ path: 'demo-openapi.yaml', content: yaml });
+
+    const info = await openspecTool.execute({ path: 'demo-openapi.yaml', operation: 'info' });
+    expect(info).toContain('Demo API');
+
+    const paths = await openspecTool.execute({ path: 'demo-openapi.yaml', operation: 'paths' });
+    expect(paths).toContain('/users');
+
+    const operations = await openspecTool.execute({
+      path: 'demo-openapi.yaml',
+      operation: 'operations',
+      path_filter: '/users',
+    });
+    expect(operations).toContain('GET /users');
+
+    const deleteTool = createDeleteTool(env);
+    await deleteTool.execute({ path: 'demo-openapi.yaml' });
   });
 
   it('todo tool correctly tracks and merges tasks', async () => {

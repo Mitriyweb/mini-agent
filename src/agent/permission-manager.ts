@@ -8,21 +8,19 @@ import { PermissionStore } from './permission-store.js';
 
 export interface PermissionManagerOptions {
   configPath?: string;
+  globalConfigPath?: string;
   store?: PermissionStore;
+  globalStore?: PermissionStore;
 }
 
 export class PermissionManager {
   private sessionRules: PermissionRule[] = [];
   readonly store: PermissionStore | null;
+  readonly globalStore: PermissionStore | null;
 
   constructor(options: PermissionManagerOptions = {}) {
-    if (options.store) {
-      this.store = options.store;
-    } else if (options.configPath) {
-      this.store = new PermissionStore(options.configPath);
-    } else {
-      this.store = null;
-    }
+    this.store = options.store ?? (options.configPath ? new PermissionStore(options.configPath) : null);
+    this.globalStore = options.globalStore ?? (options.globalConfigPath ? new PermissionStore(options.globalConfigPath) : null);
   }
 
   getSessionRules(): PermissionRule[] {
@@ -34,8 +32,13 @@ export class PermissionManager {
     return this.store.load().rules;
   }
 
+  getGlobalRules(): PermissionRule[] {
+    if (!this.globalStore) return [];
+    return this.globalStore.load().rules;
+  }
+
   getAllRules(): PermissionRule[] {
-    return [...this.getPersistentRules(), ...this.sessionRules];
+    return [...this.getGlobalRules(), ...this.getPersistentRules(), ...this.sessionRules];
   }
 
   addSessionRule(rule: PermissionRule): void {
@@ -51,6 +54,14 @@ export class PermissionManager {
       this.store.addRule(rule);
     } else {
       // Fallback if no store attached
+      this.addSessionRule({ ...rule, scope: PermissionScope.PERSISTENT });
+    }
+  }
+
+  addGlobalRule(rule: PermissionRule): void {
+    if (this.globalStore) {
+      this.globalStore.addRule(rule);
+    } else {
       this.addSessionRule({ ...rule, scope: PermissionScope.PERSISTENT });
     }
   }

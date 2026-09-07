@@ -40,7 +40,8 @@ export const createGlobTool = (env: ToolEnvironment): Tool<GlobArgs, string> => 
     trust: TrustKind.PATH,
     describe: (args) => `glob ${args.pattern}`,
     async execute(args) {
-      const pattern = args.pattern;
+      const rawPattern = args.pattern;
+      const pattern = typeof rawPattern === 'string' ? rawPattern.trim() || '**' : '';
       if (typeof pattern !== 'string' || pattern.length === 0) {
         throw new Error('pattern must be a non-empty string.');
       }

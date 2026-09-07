@@ -43,6 +43,7 @@ export const grepDefinition: ToolDefinition = {
         pattern: {
           type: 'string',
           description: 'Regular expression pattern to search for.',
+          minLength: 1,
         },
         path: {
           type: 'string',
@@ -99,8 +100,8 @@ export const createGrepTool = (env: ToolEnvironment): Tool<GrepArgs, string> => 
     describe: (args) => `grep ${args.pattern}`,
     async execute(args) {
       const pattern = args.pattern;
-      if (typeof pattern !== 'string' || pattern.length === 0) {
-        throw new Error('pattern must be a non-empty string.');
+      if (typeof pattern !== 'string' || pattern.trim().length === 0) {
+        return 'No matches: grep pattern is empty.';
       }
       const ignoreCase = args.ignore_case === true;
       const regex = compilePattern(pattern, ignoreCase);

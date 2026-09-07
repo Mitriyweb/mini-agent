@@ -6,3 +6,4 @@ config.js
 .env
 .*.bun
 .*.bun-build
+.mini-agent/permissions.json

@@ -59,10 +59,12 @@ export interface PermissionsOptions {
   rl?: import('node:readline/promises').Interface | null;
   configPath?: string;
   manager?: any; // PermissionManager instance
+  globalConfigPath?: string;
 }
 
 export interface Permissions {
   approve: (tool: Tool, args: any) => Promise<boolean>;
+  setAutoApprove: (enabled: boolean) => void;
   close: () => void;
   getManager?: () => any;
 }
