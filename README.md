@@ -144,9 +144,9 @@ When a command requires confirmation, you can choose:
 You can allow exact commands or pattern/wildcard masks when selecting **Allow for session** or **Allow always**:
 
 #### 1. Exact Match
-Matches the exact normalized command line.
+Matches the exact normalized command line string.
 - `git commit -a -m "fix"` matches only this exact invocation.
-- `git commit -a -m "other"` or `git push` will still prompt for approval.
+- Exact rules authorize the specific string explicitly approved by the user (including specific redirection or subshell strings if explicitly authorized as exact rules).
 
 #### 2. Verb Wildcard Pattern (`git commit *`)
 Matches commands starting with specific subcommands/verbs.
@@ -172,7 +172,7 @@ A specific `deny` rule always overrides broader `allow` rules. For example, if `
 For compound shell commands using chaining operators (`&&`, `||`, `;`, `|`, `&`), each subcommand is evaluated independently against permission rules (fail-closed model).
 - Allowing `git commit *` will NOT automatically allow `git commit -m "fix" && rm -rf /`.
 
-Wildcard patterns (`git *`, `git commit *`) also strictly fail-closed if a command contains unsafe shell syntax such as command substitution (`$()`, backticks \`...\`), multi-line newlines, or redirection operators (`>`, `>>`, `<`, `2>`).
+Wildcard patterns (`git *`, `git commit *`) strictly fail-closed if a command contains unsafe shell syntax such as command substitution (`$()`, backticks \`...\`), multi-line newlines, or redirection operators (`>`, `>>`, `<`, `2>`).
 
 ### Persistent Configuration Format
 

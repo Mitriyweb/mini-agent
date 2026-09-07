@@ -83,7 +83,7 @@ export class PermissionManager {
       // Option 3: Binary glob e.g. "git *"
       const binPattern = `${tokens[0]} *`;
       candidates.push({
-        label: `Binary pattern: "${binPattern}"`,
+        label: `Binary pattern: "${binPattern}" (allows all ${tokens[0]} subcommands)`,
         pattern: binPattern,
         match: 'glob',
       });

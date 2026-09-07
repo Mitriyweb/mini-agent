@@ -14,6 +14,15 @@ export const normalizeCommand = (command: string): string => {
 
   for (let i = 0; i < trimmed.length; i++) {
     const char = trimmed[i];
+    const nextChar = trimmed[i + 1];
+
+    if (char === '\\' && i + 1 < trimmed.length) {
+      result += char + nextChar;
+      i++;
+      lastWasSpace = false;
+      continue;
+    }
+
     if (char === "'" && !inDouble) {
       inSingle = !inSingle;
       result += char;
@@ -37,7 +46,7 @@ export const normalizeCommand = (command: string): string => {
 };
 
 /**
- * Tokenizes a command into argument tokens, respecting quotes.
+ * Tokenizes a command into argument tokens, respecting quotes and escapes.
  */
 export const tokenizeCommand = (command: string): string[] => {
   const normalized = normalizeCommand(command);
@@ -50,6 +59,14 @@ export const tokenizeCommand = (command: string): string[] => {
 
   for (let i = 0; i < normalized.length; i++) {
     const char = normalized[i];
+    const nextChar = normalized[i + 1];
+
+    if (char === '\\' && i + 1 < normalized.length) {
+      current += nextChar;
+      i++;
+      continue;
+    }
+
     if (char === "'" && !inDouble) {
       inSingle = !inSingle;
     } else if (char === '"' && !inSingle) {
@@ -82,6 +99,14 @@ export const hasUnsafeShellSyntax = (command: string): boolean => {
   for (let i = 0; i < command.length; i++) {
     const char = command[i];
     const nextChar = command[i + 1];
+
+    if (char === '\\') {
+      if (i + 1 >= command.length) {
+        return true; // Trailing backslash / line continuation
+      }
+      i++; // Skip escaped character
+      continue;
+    }
 
     if (char === "'" && !inDouble) {
       inSingle = !inSingle;
@@ -122,6 +147,12 @@ export const splitShellCommands = (command: string): string[] => {
   for (let i = 0; i < trimmed.length; i++) {
     const char = trimmed[i];
     const nextChar = trimmed[i + 1];
+
+    if (char === '\\' && i + 1 < trimmed.length) {
+      current += char + nextChar;
+      i++;
+      continue;
+    }
 
     if (char === "'" && !inDouble) {
       inSingle = !inSingle;

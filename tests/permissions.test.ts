@@ -22,11 +22,15 @@ describe('Permissions System - Matcher Unit Tests', () => {
   it('normalizeCommand handles spaces and quotes correctly', () => {
     expect(normalizeCommand('  git   commit   -m   "fix   bug"  ')).toBe('git commit -m "fix   bug"');
     expect(normalizeCommand('git   status')).toBe('git status');
+    expect(normalizeCommand('git commit -m "foo\\"bar"')).toBe('git commit -m "foo\\"bar"');
   });
 
-  it('tokenizeCommand parses arguments preserving quotes', () => {
+  it('tokenizeCommand parses arguments preserving quotes and escapes', () => {
     const tokens = tokenizeCommand('git commit -a -m "fix bug"');
     expect(tokens).toEqual(['git', 'commit', '-a', '-m', 'fix bug']);
+
+    const escapedTokens = tokenizeCommand('git commit -m "foo\\"bar"');
+    expect(escapedTokens).toEqual(['git', 'commit', '-m', 'foo"bar']);
   });
 
   it('splitShellCommands splits operators outside quotes', () => {
@@ -73,12 +77,26 @@ describe('Permissions System - Matcher Unit Tests', () => {
     expect(hasUnsafeShellSyntax('git status < /tmp/in')).toBe(true);
     expect(hasUnsafeShellSyntax('git status 2>/tmp/err')).toBe(true);
     expect(hasUnsafeShellSyntax('git commit -m "line1\nline2"')).toBe(true);
+    expect(hasUnsafeShellSyntax('git commit -m "foo\\"$(echo evil)"')).toBe(true);
 
     // Wildcard matching fails closed for commands with unsafe constructs
     const pattern = 'git *';
     expect(matchesGlob(pattern, 'git status > /tmp/out')).toBe(false);
     expect(matchesGlob(pattern, 'git commit -m "$(echo malicious)"')).toBe(false);
     expect(matchesGlob(pattern, 'git commit -m "`echo malicious`"')).toBe(false);
+  });
+
+  it('exact rules allow explicitly authorized command strings even with redirects', () => {
+    const rules: PermissionRule[] = [
+      { effect: 'allow', pattern: 'git status > /tmp/out', match: 'exact' },
+      { effect: 'allow', pattern: 'git *', match: 'glob' },
+    ];
+
+    // Exact rule explicitly matches authorized string
+    expect(evaluateRules(rules, 'git status > /tmp/out')).toBe('allow');
+
+    // Wildcard rule fails closed for unauthorized string with redirect
+    expect(evaluateRules(rules, 'git status > /tmp/other')).toBe('undecided');
   });
 
   it('evaluates rule priority: deny > allow exact > allow mask', () => {
