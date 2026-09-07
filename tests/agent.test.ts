@@ -9,6 +9,7 @@ import { createCheckTool } from '../src/tools/check.js';
 import { createGlobTool } from '../src/tools/glob.js';
 import { createOpenspecTool } from '../src/tools/openspec.js';
 import { createTodoTool } from '../src/tools/todo.js';
+import { createGrepTool } from '../src/tools/grep.js';
 import { createBuiltInRegistry, runAgent } from '../src/agent/agent.js';
 import { createPermissions } from '../src/agent/permissions.js';
 import { INSTRUCTIONS } from '../src/agent/instructions.js';
@@ -102,6 +103,14 @@ describe('mini-agent TypeScript test suite', () => {
     const globTool = createGlobTool({ workspace });
 
     await expect(globTool.execute({ pattern: '   ' })).resolves.toContain('README.md');
+  });
+
+  it('grep tool rejects empty and whitespace-only patterns', async () => {
+    const workspace = await Workspace.open(process.cwd());
+    const grepTool = createGrepTool({ workspace });
+
+    await expect(grepTool.execute({ pattern: '' })).resolves.toBe('No matches: grep pattern is empty.');
+    await expect(grepTool.execute({ pattern: '   ' })).resolves.toBe('No matches: grep pattern is empty.');
   });
 
   it('openspec tool reads YAML specs and exposes paths and operations', async () => {

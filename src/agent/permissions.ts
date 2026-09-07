@@ -98,7 +98,7 @@ export const createPermissions = (
   options: PermissionsOptions = {},
   workspace?: Workspace,
 ): Permissions => {
-  const autoApprove = options.autoApprove ?? false;
+  let autoApprove = options.autoApprove ?? false;
   const ask = options.ask;
   const askDecision = options.askDecision;
   let rl = options.rl ?? null;
@@ -109,8 +109,9 @@ export const createPermissions = (
     (workspace?.root
       ? path.join(workspace.root, '.mini-agent', 'permissions.json')
       : path.join(os.homedir(), '.mini-agent', 'permissions.json'));
+  const globalConfigPath = options.globalConfigPath ?? (workspace ? path.join(os.homedir(), '.mini-agent', 'permissions.json') : undefined);
 
-  const manager: PermissionManager = options.manager ?? new PermissionManager({ configPath });
+  const manager: PermissionManager = options.manager ?? new PermissionManager({ configPath, globalConfigPath });
 
   const getRl = (): ReadlineInterface => {
     if (!rl || (rl as any).closed) {
@@ -122,6 +123,9 @@ export const createPermissions = (
 
   return {
     getManager: () => manager,
+    setAutoApprove: (enabled: boolean) => {
+      autoApprove = enabled;
+    },
     async approve(tool: Tool, args: any): Promise<boolean> {
       if (!tool.needsApproval || autoApprove) return true;
       if (workspace && workspace.gitRoot && !toolLeavesTrustRoot(tool, args, workspace)) {
@@ -177,18 +181,19 @@ export const createPermissions = (
         console.log(`  ${targetStr}\n`);
         console.log(`1. Allow once`);
         console.log(`2. Allow for this session`);
-        console.log(`3. Allow always`);
-        console.log(`4. Reject\n`);
+        console.log(`3. Allow for this project`);
+        console.log(`4. Allow globally`);
+        console.log(`5. Reject\n`);
 
-        const answer = await activeRl.question(color.warn('Select an option [1-4] (default 4): '));
+        const answer = await activeRl.question(color.warn('Select an option [1-5] (default 5): '));
         const choice = answer.trim().toLowerCase();
 
         if (choice === '1' || choice === 'y' || choice === 'yes') {
           return true;
         }
 
-        if (choice === '2' || choice === '3') {
-          const isAlways = choice === '3';
+        if (choice === '2' || choice === '3' || choice === '4') {
+          const isGlobal = choice === '4';
 
           let selectedPattern = targetStr;
           let selectedMatch: 'exact' | 'glob' = 'exact';
@@ -209,7 +214,9 @@ export const createPermissions = (
           }
 
           const rule = { effect: 'allow' as const, pattern: selectedPattern, match: selectedMatch };
-          if (isAlways) {
+          if (isGlobal) {
+            manager.addGlobalRule(rule);
+          } else if (choice === '3') {
             manager.addPersistentRule(rule);
           } else {
             manager.addSessionRule(rule);

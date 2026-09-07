@@ -312,6 +312,8 @@ export const main = async () => {
   });
 
   let priorMessages = null;
+  let sessionMaxSteps = options.maxSteps;
+  let sessionAutoApprove = options.autoApprove;
 
   console.log(color.info('Interactive session started. Type your task below or "exit" / "quit" to stop.'));
   console.log(color.dim('Type /help to see available workflows.\n'));
@@ -341,13 +343,19 @@ export const main = async () => {
         continue;
       }
 
-      if (trimmed === '/help' || trimmed === '/workflows') {
+      if (trimmed === '/help') {
         console.log(color.info('\n--- Built-in commands ---'));
         console.log('  /help      Show this help text');
         console.log('  /workflows List available workflow shortcuts');
         console.log('  /skills    List available skills');
+        console.log('  /max-steps <number>  Change the step limit for new tasks');
+        console.log('  /auto-approve [on|off]  Toggle or set approval prompts');
         console.log('  /exit      Exit the interactive session');
         console.log('  /quit      Exit the interactive session');
+
+        console.log(color.info('\n--- Session options ---'));
+        console.log(`  --max-steps ${sessionMaxSteps}   Maximum agent steps for each task`);
+        console.log(`  --auto-approve ${sessionAutoApprove ? 'on' : 'off'}  Skip tool approval prompts`);
 
         console.log(color.info('\n--- Workflows ---'));
         if (workflows.length === 0) {
@@ -364,6 +372,44 @@ export const main = async () => {
         console.log('  /codebase-onboarding');
         console.log('  exit');
         console.log('');
+        continue;
+      }
+
+      if (trimmed === '/workflows') {
+        console.log(color.info('\n--- Workflows ---'));
+        if (workflows.length === 0) {
+          console.log(color.dim('  (none found)'));
+        } else {
+          for (const wf of workflows) {
+            console.log(color.cyan(`  ${wf.command}`) + ` - ${wf.description}`);
+            console.log(color.dim(`      Example: ${wf.command}`));
+          }
+        }
+        console.log('');
+        continue;
+      }
+
+      if (trimmed.startsWith('/max-steps')) {
+        const value = trimmed.slice('/max-steps'.length).trim();
+        const parsed = Number(value);
+        if (!/^\d+$/.test(value) || !Number.isSafeInteger(parsed) || parsed < 1) {
+          console.log(color.warn('Usage: /max-steps <positive number>\n'));
+          continue;
+        }
+        sessionMaxSteps = parsed;
+        console.log(color.success(`Maximum steps set to ${sessionMaxSteps}.\n`));
+        continue;
+      }
+
+      if (trimmed === '/auto-approve' || trimmed.startsWith('/auto-approve ')) {
+        const value = trimmed.slice('/auto-approve'.length).trim().toLowerCase();
+        if (value !== '' && value !== 'on' && value !== 'off' && value !== 'toggle') {
+          console.log(color.warn('Usage: /auto-approve [on|off|toggle]\n'));
+          continue;
+        }
+        sessionAutoApprove = value === 'on' || (value !== 'off' && !sessionAutoApprove);
+        permissionsRepl.setAutoApprove(sessionAutoApprove);
+        console.log(color.success(`Auto-approve ${sessionAutoApprove ? 'enabled' : 'disabled'}.\n`));
         continue;
       }
 
@@ -385,7 +431,7 @@ export const main = async () => {
           provider,
           permissions: permissionsRepl,
           workspace,
-          maxSteps: options.maxSteps,
+          maxSteps: sessionMaxSteps,
           onEvent,
           priorMessages,
           workflows,

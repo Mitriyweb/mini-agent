@@ -195,6 +195,19 @@ describe('Permissions System - Store & Manager Tests', () => {
     expect(storedPatterns).toContain('always-cmd');
     expect(storedPatterns).not.toContain('session-cmd');
   });
+
+  it('PermissionManager evaluates global and project rules together', () => {
+    const globalPath = path.join(tmpDir, 'global.json');
+    const projectPath = path.join(tmpDir, 'project.json');
+    const globalStore = new PermissionStore(globalPath);
+    const projectStore = new PermissionStore(projectPath);
+    globalStore.addRule({ effect: 'allow', pattern: 'git status', match: 'exact' });
+    projectStore.addRule({ effect: 'deny', pattern: 'git push *', match: 'glob' });
+
+    const manager = new PermissionManager({ store: projectStore, globalStore });
+    expect(manager.evaluate('git status')).toBe('allow');
+    expect(manager.evaluate('git push origin main')).toBe('deny');
+  });
 });
 
 describe('Permissions System - Integration & Prompt Flow', () => {
@@ -232,6 +245,27 @@ describe('Permissions System - Integration & Prompt Flow', () => {
     const approved2 = await permissions.approve(mockTool, { command: 'git commit -m "other"' });
     expect(approved2).toBe(true);
 
+    rl.close();
+  });
+
+  it('interactive prompt can persist a rule globally', async () => {
+    const configPath = path.join(tmpDir, 'project-global-choice.json');
+    const globalConfigPath = path.join(tmpDir, 'global-choice.json');
+    const inputStream = new PassThrough();
+    const outputStream = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+    const rl = createInterface({ input: inputStream, output: outputStream });
+    const permissions = createPermissions({ configPath, globalConfigPath, rl });
+
+    const approvePromise = permissions.approve(mockTool, { command: 'git commit -a -m "global"' });
+    setImmediate(() => {
+      inputStream.write('4\n');
+      setImmediate(() => inputStream.write('2\n'));
+    });
+
+    expect(await approvePromise).toBe(true);
+    const globalRules = new PermissionStore(globalConfigPath).load().rules;
+    expect(globalRules.some((rule) => rule.pattern === 'git commit *')).toBe(true);
+    expect(new PermissionStore(configPath).load().rules).toEqual([]);
     rl.close();
   });
 
