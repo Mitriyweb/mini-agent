@@ -24,12 +24,12 @@
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "dependencies": {
-    "concolor": "^1.1.4",
-    "openai": "^4.86.0"
+    "concolor": "1.1.4",
+    "openai": "4.86.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.12",
-    "@types/node": "^22.13.10",
-    "typescript": "^5.8.2"
+    "@biomejs/biome": "2.5.12",
+    "@types/node": "22.13.10",
+    "typescript": "5.8.2"
   }
 }

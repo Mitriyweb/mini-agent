@@ -2,8 +2,10 @@
 
 set -eu
 
+printf '%s\n' 'Checking dependency versions...'
+bun run scripts/check-dependency-versions.ts
 printf '%s\n' 'Running Biome...'
-bunx biome lint --changed --error-on-warnings --no-errors-on-unmatched .
+bun x biome lint --changed --error-on-warnings --no-errors-on-unmatched .
 printf '%s\n' 'Running typecheck...'
 bun run check
 printf '%s\n' 'Running tests...'
