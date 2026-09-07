@@ -9,6 +9,7 @@ A lightweight, modular coding agent harness compatible with **`model-router`** (
 - **TypeScript & ESM**: Fully typed codebase targetting Node.js >= 20 and Bun.
 - **Model Router Integration**: Pre-configured to connect to `http://localhost:8787/v1` with model `model-router-auto`.
 - **Modular Local Tools**: Includes file & workspace operations (`read`, `write`, `edit`, `patch`, `delete`, `glob`, `grep`, `bash`, `check`, `fetch`, `todo`).
+- **OpenAPI / OpenSpec Inspection**: Built-in `openspec` tool reads JSON/YAML specs, lists routes, and validates common OpenAPI structure issues.
 - **Workflows & Slash Commands**: Auto-discovers step-by-step procedures in `.agents/workflows/*.md` and supports `/workflow-name` slash commands in interactive and batch modes.
 - **Skills On-Demand**: Discovers capabilities in `.agents/skills/*/SKILL.md` with YAML frontmatter and exposes them directly to the agent's context.
 - **Lazy Skill Loading**: Adds only skill metadata to the prompt; full skill instructions are read only when relevant to the current task.
@@ -35,7 +36,7 @@ The installer places `mini-agent` in `~/.local/bin`. Add that directory to your
 `PATH` if it is not already available. To install a specific tag:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Mitriyweb/mini-agent/main/install.sh | MINI_AGENT_VERSION=v0.1.0 bash
+curl -fsSL https://raw.githubusercontent.com/Mitriyweb/mini-agent/main/install.sh | MINI_AGENT_VERSION=v0.1.9 bash
 ```
 
 Project page: https://mitriyweb.github.io/mini-agent/
@@ -85,6 +86,18 @@ bun run start -- -y "Check package.json and describe the project"
 bun run start
 ```
 
+The agent runs in a step loop. By default, it is capped at 30 execution steps to avoid runaway loops. You can override that limit with `--max-steps`.
+
+#### Examples:
+```bash
+bun run start -- "Add a small improvement to this project"
+bun run start -- --dir ./src --max-steps 10 "Refactor a helper"
+bun run start -- --auto-approve "Run without prompting for tool approval"
+bun run start -- --dir . "Inspect an OpenAPI spec and validate the routes"
+```
+
+The built-in `openspec` tool can read JSON or YAML OpenAPI-style files, list paths, summarize operations, and flag validation issues. Empty glob patterns are treated as a workspace-wide match (`**`) instead of failing.
+
 #### Options & Flags:
 ```bash
 bun run start -- [options] [task...]
@@ -95,6 +108,8 @@ Options:
   --model <model_id>          Override model ID (default: model-router-auto)
   --url <base_url>            Override API base URL (default: http://localhost:8787/v1)
   --max-steps <number>        Max execution steps (default: 30)
+  -v, --version               Show the installed version
+  -h, --help                  Show this help text
 ```
 
 ---
@@ -117,12 +132,13 @@ Options:
 - `edit`: Replace unique text fragments in a file (handles CRLF/LF line endings).
 - `patch`: Apply multiple hunk replacements to a file.
 - `delete`: Delete a file inside the workspace.
-- `glob`: Search files by wildcard/glob pattern.
+- `glob`: Search files by wildcard/glob pattern. Empty patterns are treated as a workspace-wide match (`**`).
 - `grep`: Search file contents using regular expressions.
 - `bash`: Run shell commands in the workspace root.
 - `check`: Run syntax/type checks (`bun x tsc --noEmit` or `bun run check`).
 - `fetch`: Fetch HTTP/HTTPS web documents.
 - `todo`: Maintain structured task tracking lists.
+- `openspec`: Read and work with openspec (OpenAPI-style) specification files. Supports reading, validating, and extracting information from openspec JSON/YAML files.
 
 ---
 

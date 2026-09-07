@@ -12,10 +12,11 @@ export const escapeRegExp = (text: string): string => text.replace(/[|\\{}()[\]^
 export const toPosix = (value: string): string => value.replaceAll('\\', '/');
 
 export const globToRegExp = (pattern: string): RegExp => {
-  if (typeof pattern !== 'string' || pattern.length === 0) {
+  if (typeof pattern !== 'string') {
     throw new Error('glob pattern must be a non-empty string.');
   }
-  const normalized = toPosix(pattern);
+  const normalizedPattern = pattern.trim() || '**';
+  const normalized = toPosix(normalizedPattern);
   const tokens = normalized.match(GLOB_TOKEN) ?? [];
   const atoms = tokens.map((token) => GLOB_ATOM[token] ?? escapeRegExp(token));
   const source = `^${atoms.join('')}$`;

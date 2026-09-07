@@ -44,7 +44,13 @@ mini-agent - Compact modular coding agent harness
 Usage:
   mini-agent [options] [task...]
 
-Options:
+Quick examples:
+  mini-agent "Add a small feature to the CLI"
+  mini-agent --dir ./src --max-steps 10 "Refactor a helper"
+  mini-agent --auto-approve "Run a task without approval prompts"
+  mini-agent --dir . "Inspect the OpenAPI spec and validate the routes"
+
+Common options:
   -y, --auto-approve, --yes   Auto-approve tool execution without interactive prompt
   --dir <path>                Set project workspace directory
   --model <model_id>          Override model ID (default: model-router-auto)
@@ -52,6 +58,26 @@ Options:
   --max-steps <number>        Max agent execution steps (default: 30)
   -v, --version               Show the installed version
   -h, --help                  Show this help text
+
+REPL commands:
+  /help       Show workflow, skill, and command help
+  /workflows  List available workflow shortcuts
+  /skills     List available skills
+  /exit       Exit the interactive session
+  /quit       Exit the interactive session
+
+Built-in capabilities:
+  - Read/write/edit/patch/delete files in the workspace
+  - Search with glob and grep
+  - Run bash and syntax checks
+  - Inspect OpenAPI/JSON/YAML specs via the openspec tool
+  - Run workflow-driven tasks from slash commands
+
+Notes:
+  - Default step limit is 30 to prevent runaway agent loops.
+  - Use --max-steps to raise or lower the execution budget for a task.
+  - An empty glob pattern is treated as a workspace-wide match (**), safer than failing.
+  - The openspec tool can read, summarize, and validate OpenAPI-style files.
 `);
 };
 
@@ -295,24 +321,48 @@ export const main = async () => {
       const taskInput = await rl.question(color.cyan('mini-agent > '));
       const trimmed = taskInput.trim();
       if (!trimmed) continue;
-      if (trimmed.toLowerCase() === 'exit' || trimmed.toLowerCase() === 'quit') {
+
+      if (trimmed === '/exit' || trimmed === '/quit' || trimmed.toLowerCase() === 'exit' || trimmed.toLowerCase() === 'quit') {
         console.log('Goodbye!');
         break;
       }
 
-      if (trimmed === '/help' || trimmed === '/workflows' || trimmed === '/skills') {
-        console.log(color.info('\n--- Workflows ---'));
-        if (workflows.length === 0) {
-          console.log(color.dim('  (none found)'));
-        } else {
-          for (const wf of workflows) console.log(color.cyan(`  ${wf.command}`) + ` - ${wf.description}`);
-        }
+      if (trimmed === '/skills') {
         console.log(color.info('\n--- Skills ---'));
         if (skills.length === 0) {
           console.log(color.dim('  (none found)'));
         } else {
-          for (const s of skills) console.log(color.cyan(`  ${s.name}`) + ` - ${s.description}`);
+          for (const skill of skills) {
+            console.log(color.cyan(`  ${skill.name}`) + ` - ${skill.description}`);
+            console.log(color.dim(`      Use with: /${skill.name}`));
+          }
         }
+        console.log('');
+        continue;
+      }
+
+      if (trimmed === '/help' || trimmed === '/workflows') {
+        console.log(color.info('\n--- Built-in commands ---'));
+        console.log('  /help      Show this help text');
+        console.log('  /workflows List available workflow shortcuts');
+        console.log('  /skills    List available skills');
+        console.log('  /exit      Exit the interactive session');
+        console.log('  /quit      Exit the interactive session');
+
+        console.log(color.info('\n--- Workflows ---'));
+        if (workflows.length === 0) {
+          console.log(color.dim('  (none found)'));
+        } else {
+          for (const wf of workflows) {
+            console.log(color.cyan(`  ${wf.command}`) + ` - ${wf.description}`);
+            console.log(color.dim(`      Example: ${wf.command}`));
+          }
+        }
+
+        console.log(color.info('\n--- Examples ---'));
+        console.log('  /review-and-commit');
+        console.log('  /codebase-onboarding');
+        console.log('  exit');
         console.log('');
         continue;
       }

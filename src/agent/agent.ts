@@ -12,6 +12,7 @@ import { createGrepTool } from '../tools/grep.js';
 import { createPatchTool } from '../tools/patch.js';
 import { createReadTool } from '../tools/read.js';
 import { createTodoTool } from '../tools/todo.js';
+import { createOpenspecTool } from '../tools/openspec.js';
 import { createWriteTool } from '../tools/write.js';
 import { ToolRegistry } from '../tools/registry.js';
 import type { AgentEvent, AgentOptions, AgentResult } from '../types/agent.js';
@@ -80,6 +81,7 @@ export const createBuiltInRegistry = (env: ToolEnvironment): ToolRegistry => {
   registry.register(createCheckTool(env));
   registry.register(createFetchTool());
   registry.register(createTodoTool());
+  registry.register(createOpenspecTool(env));
   return registry;
 };
 

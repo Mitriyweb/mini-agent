@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "concolor": "1.1.4",
+    "js-yaml": "5.4.1",
     "openai": "4.86.0"
   },
   "devDependencies": {
