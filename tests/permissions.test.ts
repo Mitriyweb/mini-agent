@@ -16,7 +16,12 @@ import {
 import { PermissionStore } from '../src/agent/permission-store.ts';
 import { PermissionManager } from '../src/agent/permission-manager.ts';
 import { createPermissions } from '../src/agent/permissions.ts';
-import type { PermissionRule } from '../src/types/permissions.ts';
+import {
+  PermissionDecisionKind,
+  PermissionEffect,
+  PermissionMatchKind,
+  type PermissionRule,
+} from '../src/types/permissions.ts';
 
 describe('Permissions System - Matcher Unit Tests', () => {
   it('normalizeCommand handles spaces and quotes correctly', () => {
@@ -88,8 +93,8 @@ describe('Permissions System - Matcher Unit Tests', () => {
 
   it('exact rules allow explicitly authorized command strings even with redirects', () => {
     const rules: PermissionRule[] = [
-      { effect: 'allow', pattern: 'git status > /tmp/out', match: 'exact' },
-      { effect: 'allow', pattern: 'git *', match: 'glob' },
+      { effect: PermissionEffect.ALLOW, pattern: 'git status > /tmp/out', match: PermissionMatchKind.EXACT },
+      { effect: PermissionEffect.ALLOW, pattern: 'git *', match: PermissionMatchKind.GLOB },
     ];
 
     // Exact rule explicitly matches authorized string
@@ -101,8 +106,8 @@ describe('Permissions System - Matcher Unit Tests', () => {
 
   it('evaluates rule priority: deny > allow exact > allow mask', () => {
     const rules: PermissionRule[] = [
-      { effect: 'allow', pattern: 'git *', match: 'glob' },
-      { effect: 'deny', pattern: 'git push *', match: 'glob' },
+      { effect: PermissionEffect.ALLOW, pattern: 'git *', match: PermissionMatchKind.GLOB },
+      { effect: PermissionEffect.DENY, pattern: 'git push *', match: PermissionMatchKind.GLOB },
     ];
 
     expect(evaluateRules(rules, 'git status')).toBe('allow');
@@ -112,15 +117,15 @@ describe('Permissions System - Matcher Unit Tests', () => {
 
   it('compound shell command security evaluation (fail-closed)', () => {
     const rules: PermissionRule[] = [
-      { effect: 'allow', pattern: 'git commit *', match: 'glob' },
+      { effect: PermissionEffect.ALLOW, pattern: 'git commit *', match: PermissionMatchKind.GLOB },
     ];
 
     // Allowed subcommand + forbidden subcommand = undecided/prompt
     expect(evaluateRules(rules, 'git commit -m "fix" && rm -rf /')).toBe('undecided');
 
     const rulesBoth: PermissionRule[] = [
-      { effect: 'allow', pattern: 'git status', match: 'exact' },
-      { effect: 'allow', pattern: 'git commit *', match: 'glob' },
+      { effect: PermissionEffect.ALLOW, pattern: 'git status', match: PermissionMatchKind.EXACT },
+      { effect: PermissionEffect.ALLOW, pattern: 'git commit *', match: PermissionMatchKind.GLOB },
     ];
     expect(evaluateRules(rulesBoth, 'git status && git commit -m "fix"')).toBe('allow');
   });
@@ -176,7 +181,7 @@ describe('Permissions System - Store & Manager Tests', () => {
 
   it('PermissionStore performs atomic write and respects version field', () => {
     const store = new PermissionStore(configPath);
-    store.addRule({ effect: 'allow', pattern: 'git status', match: 'exact' });
+    store.addRule({ effect: PermissionEffect.ALLOW, pattern: 'git status', match: PermissionMatchKind.EXACT });
 
     expect(fs.existsSync(configPath)).toBe(true);
     const loaded = store.load();
@@ -187,8 +192,8 @@ describe('Permissions System - Store & Manager Tests', () => {
 
   it('PermissionStore does not store session rules on disk', () => {
     const manager = new PermissionManager({ configPath });
-    manager.addSessionRule({ effect: 'allow', pattern: 'session-cmd', match: 'exact' });
-    manager.addPersistentRule({ effect: 'allow', pattern: 'always-cmd', match: 'exact' });
+    manager.addSessionRule({ effect: PermissionEffect.ALLOW, pattern: 'session-cmd', match: PermissionMatchKind.EXACT });
+    manager.addPersistentRule({ effect: PermissionEffect.ALLOW, pattern: 'always-cmd', match: PermissionMatchKind.EXACT });
 
     const rawConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     const storedPatterns = rawConfig.rules.map((r: any) => r.pattern);
@@ -245,7 +250,7 @@ describe('Permissions System - Integration & Prompt Flow', () => {
         expect(command).toBe('git commit -a -m "feature"');
         const verbCand = candidates.find((c) => c.pattern === 'git commit *');
         return {
-          kind: 'allow-persistent',
+          kind: PermissionDecisionKind.ALLOW_PERSISTENT,
           pattern: verbCand?.pattern,
           match: verbCand?.match,
         };

@@ -1,6 +1,10 @@
 import type { Workspace } from '../agent/workspace.js';
 
-export type TrustKind = 'path' | 'command' | 'always';
+export enum TrustKind {
+  PATH = 'path',
+  COMMAND = 'command',
+  ALWAYS = 'always',
+}
 
 export interface ToolDefinition {
   type: 'function';

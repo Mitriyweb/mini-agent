@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { atomicWriteFile } from '../utils/textfile.js';
-import type { Tool, ToolDefinition, ToolEnvironment } from '../types/tools.js';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
 
 export interface WriteArgs {
   path: string;
@@ -50,7 +50,7 @@ export const createWriteTool = (env: ToolEnvironment): Tool<WriteArgs, string> =
   const { workspace } = env;
   return {
     needsApproval: true,
-    trust: 'path',
+    trust: TrustKind.PATH,
     describe(args) {
       const relativePath = args.path;
       const content = args.content ?? '';

@@ -10,7 +10,7 @@ import { loadWorkflows, loadSkills, resolveWorkflowCommand } from './agent/custo
 import { createProvider } from './agent/llm.js';
 import { createPermissions } from './agent/permissions.js';
 import { Workspace } from './agent/workspace.js';
-import type { AgentEvent } from './types/agent.js';
+import { AgentResultStatus, type AgentEvent } from './types/agent.js';
 import packageJson from '../package.json' with { type: 'json' };
 
 const color = (concolor as any)({
@@ -175,7 +175,7 @@ export const createEventHandler = () => {
         }
         break;
       case 'result': {
-        const badge = event.status === 'ok' ? color.success('✔') : color.error('✖');
+        const badge = event.status === AgentResultStatus.OK ? color.success('✔') : color.error('✖');
         console.log(`${badge} Tool Result (${event.name}): status=${event.status}`);
         if (event.preview) {
           const lines = event.preview.split('\n').slice(0, 5).join('\n');

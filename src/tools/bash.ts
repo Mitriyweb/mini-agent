@@ -1,5 +1,5 @@
 import { runCommand } from '../utils/command.js';
-import type { Tool, ToolDefinition, ToolEnvironment } from '../types/tools.js';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
 
 export interface BashArgs {
   command: string;
@@ -27,7 +27,7 @@ export const createBashTool = (env: ToolEnvironment): Tool<BashArgs, string> => 
   const { workspace } = env;
   return {
     needsApproval: true,
-    trust: 'command',
+    trust: TrustKind.COMMAND,
     describe(args) {
       return `run shell command: ${args.command}`;
     },

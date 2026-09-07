@@ -4,10 +4,16 @@ import type { Provider } from './llm.js';
 import type { Workspace } from '../agent/workspace.js';
 import type { Workflow, Skill } from '../agent/customizations.js';
 
+export enum AgentResultStatus {
+  OK = 'ok',
+  ERROR = 'error',
+  DENIED = 'denied',
+}
+
 export type AgentEvent =
   | { type: 'step'; step: number; maxSteps: number; model: string }
   | { type: 'tool'; name: string; args: unknown; argsText: string }
-  | { type: 'result'; name: string; args: unknown; status: 'ok' | 'error' | 'denied'; preview: string }
+  | { type: 'result'; name: string; args: unknown; status: AgentResultStatus; preview: string }
   | { type: 'assistant'; text: string };
 
 export interface AgentOptions {

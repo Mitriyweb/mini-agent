@@ -14,7 +14,7 @@ import { createReadTool } from '../tools/read.js';
 import { createTodoTool } from '../tools/todo.js';
 import { createWriteTool } from '../tools/write.js';
 import { ToolRegistry } from '../tools/registry.js';
-import type { AgentEvent, AgentOptions, AgentResult } from '../types/agent.js';
+import { AgentResultStatus, type AgentEvent, type AgentOptions, type AgentResult } from '../types/agent.js';
 import type { ToolEnvironment } from '../types/tools.js';
 
 const MAX_RESULT_CHARS = 60_000;
@@ -49,10 +49,10 @@ export const messageText = (message: any): string => {
   return parts.join('');
 };
 
-export const resultStatus = (rendered: string): 'ok' | 'error' | 'denied' => {
-  if (rendered.startsWith('ERROR:')) return 'error';
-  if (rendered.startsWith('DENIED:')) return 'denied';
-  return 'ok';
+export const resultStatus = (rendered: string): AgentResultStatus => {
+  if (rendered.startsWith('ERROR:')) return AgentResultStatus.ERROR;
+  if (rendered.startsWith('DENIED:')) return AgentResultStatus.DENIED;
+  return AgentResultStatus.OK;
 };
 
 export const parseToolArgs = (argsText: string): Record<string, any> | null => {

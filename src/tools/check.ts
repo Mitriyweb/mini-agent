@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { runFile } from '../utils/command.js';
-import type { Tool, ToolDefinition, ToolEnvironment } from '../types/tools.js';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
 
 export interface CheckArgs {
   path?: string;
@@ -42,7 +42,7 @@ export const createCheckTool = (env: ToolEnvironment): Tool<CheckArgs, string> =
 
   return {
     needsApproval: true,
-    trust: (args) => (hasPath(args) ? 'path' : 'command'),
+    trust: (args) => (hasPath(args) ? TrustKind.PATH : TrustKind.COMMAND),
     describe(args) {
       if (hasPath(args)) return `check ${args.path}`;
       return 'bun run check';

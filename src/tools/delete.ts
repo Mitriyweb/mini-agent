@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import type { Tool, ToolDefinition, ToolEnvironment } from '../types/tools.js';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
 
 export interface DeleteArgs {
   path: string;
@@ -27,7 +27,7 @@ export const createDeleteTool = (env: ToolEnvironment): Tool<DeleteArgs, string>
   const { workspace } = env;
   return {
     needsApproval: true,
-    trust: 'path',
+    trust: TrustKind.PATH,
     describe(args) {
       return `delete ${args.path}`;
     },

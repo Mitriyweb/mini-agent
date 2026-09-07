@@ -1,6 +1,11 @@
 import type { Tool, ToolDefinition } from '../types/tools.js';
 
-export type TodoStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+export enum TodoStatus {
+  PENDING = 'pending',
+  IN_PROGRESS = 'in_progress',
+  COMPLETED = 'completed',
+  CANCELLED = 'cancelled',
+}
 
 export interface TodoItem {
   id: string;
@@ -13,7 +18,12 @@ export interface TodoArgs {
   merge?: boolean;
 }
 
-const STATUSES: TodoStatus[] = ['pending', 'in_progress', 'completed', 'cancelled'];
+const STATUSES: TodoStatus[] = [
+  TodoStatus.PENDING,
+  TodoStatus.IN_PROGRESS,
+  TodoStatus.COMPLETED,
+  TodoStatus.CANCELLED,
+];
 
 const normalizeItem = (item: any, index: number): TodoItem => {
   if (typeof item !== 'object' || item === null) {
@@ -62,7 +72,12 @@ export const todoDefinition: ToolDefinition = {
               content: { type: 'string' },
               status: {
                 type: 'string',
-                enum: ['pending', 'in_progress', 'completed', 'cancelled'],
+                enum: [
+                  TodoStatus.PENDING,
+                  TodoStatus.IN_PROGRESS,
+                  TodoStatus.COMPLETED,
+                  TodoStatus.CANCELLED,
+                ],
               },
             },
             required: ['id', 'content', 'status'],

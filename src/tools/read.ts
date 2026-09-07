@@ -1,5 +1,5 @@
 import { formatNumberedLines, readTextFile } from '../utils/textfile.js';
-import type { Tool, ToolDefinition, ToolEnvironment } from '../types/tools.js';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
 
 const MAX_LIMIT = 2000;
 
@@ -56,7 +56,7 @@ export const createReadTool = (env: ToolEnvironment): Tool<ReadArgs, string> => 
   const { workspace } = env;
   return {
     needsApproval: false,
-    trust: 'path',
+    trust: TrustKind.PATH,
     describe: (args) => `read ${args.path}`,
     execute: async (args) => {
       const relativePath = args.path;
