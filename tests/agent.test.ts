@@ -8,7 +8,7 @@ import { createDeleteTool } from '../src/tools/delete.js';
 import { createCheckTool } from '../src/tools/check.js';
 import { createGlobTool } from '../src/tools/glob.js';
 import { createOpenspecTool } from '../src/tools/openspec.js';
-import { createTodoTool } from '../src/tools/todo.js';
+import { createTodoTool, TodoStatus } from '../src/tools/todo.js';
 import { createGrepTool } from '../src/tools/grep.js';
 import { createBuiltInRegistry, runAgent } from '../src/agent/agent.js';
 import { createPermissions } from '../src/agent/permissions.js';

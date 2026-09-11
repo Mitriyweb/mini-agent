@@ -1,10 +1,6 @@
 import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
 import { readTextFile } from '../utils/textfile.js';
 import { globToRegExp } from '../utils/globmatch.js';
-import { load } from 'js-yaml';
-import { readTextFile } from '../utils/textfile.js';
-import { globToRegExp } from '../utils/globmatch.js';
-import type { Tool, ToolDefinition, ToolEnvironment } from '../types/tools.js';
 
 export interface OpenspecArgs {
   path: string;
@@ -61,14 +57,11 @@ const isOpenspecInfo = (data: unknown): data is OpenspecInfo =>
 const isOpenspecPaths = (data: unknown): data is Record<string, OpenspecPath> =>
   data !== null && typeof data === 'object' && typeof (data as Record<string, unknown>).paths === 'object';
 
-const isOpenspecAnyOfMap = (data: unknown): data is Record<string, string> =>
-  data !== null && typeof data === 'object' && Object.keys(data as Record<string, unknown>).length > 0;
-
 export const createOpenspecTool = (env: ToolEnvironment): Tool<OpenspecArgs, string> => {
   const { workspace } = env;
   return {
     needsApproval: false,
-    trust: 'path',
+    trust: TrustKind.PATH,
     describe(args) {
       return `openspec ${args.path}`;
     },
@@ -77,20 +70,14 @@ export const createOpenspecTool = (env: ToolEnvironment): Tool<OpenspecArgs, str
       const filePath = await workspace.resolveExistingFile(relativePath);
       const content = await readTextFile(filePath);
 
-      // Try to parse as YAML first, then as JSON
       let parsedData: unknown;
-      let fileFormat: 'json' | 'yaml' = 'json';
 
       try {
-        // Try JSON first
         parsedData = JSON.parse(content);
       } catch {
-        // Not JSON, try YAML
-        parsedData = parseYaml(content);
-        fileFormat = 'yaml';
+        parsedData = parseYamlSimple(content);
       }
 
-      // Handle the requested operation
       const operation = args.operation ?? 'info';
 
       switch (operation) {
@@ -110,13 +97,52 @@ export const createOpenspecTool = (env: ToolEnvironment): Tool<OpenspecArgs, str
   };
 };
 
-function parseYaml(content: string): unknown {
-  try {
-    const parsed = load(content);
-    return parsed ?? {};
-  } catch {
-    return {};
+function parseYamlSimple(content: string): unknown {
+  const lines = content.split('\n');
+  const obj: Record<string, any> = {};
+  let currentKey = '';
+  let inInfo = false;
+  let inPaths = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    const leadingSpaces = line.length - line.trimStart().length;
+
+    if (leadingSpaces === 0) {
+      const colonIdx = line.indexOf(':');
+      if (colonIdx !== -1) {
+        const key = line.slice(0, colonIdx).trim();
+        const val = line.slice(colonIdx + 1).trim();
+        currentKey = key;
+        inInfo = key === 'info';
+        inPaths = key === 'paths';
+        if (val) {
+          obj[key] = val.replace(/^['"]|['"]$/g, '');
+        } else {
+          obj[key] = {};
+        }
+      }
+    } else if (inInfo && leadingSpaces >= 2) {
+      if (!obj.info || typeof obj.info !== 'object') obj.info = {};
+      const colonIdx = trimmed.indexOf(':');
+      if (colonIdx !== -1) {
+        const key = trimmed.slice(0, colonIdx).trim();
+        const val = trimmed.slice(colonIdx + 1).trim().replace(/^['"]|['"]$/g, '');
+        obj.info[key] = val;
+      }
+    } else if (inPaths && leadingSpaces >= 2) {
+      if (!obj.paths || typeof obj.paths !== 'object') obj.paths = {};
+      const keyMatch = trimmed.match(/^(['"]?)([^:'"]+)\1\s*:/);
+      if (keyMatch) {
+        const pKey = keyMatch[2];
+        if (!obj.paths[pKey]) obj.paths[pKey] = {};
+      }
+    }
   }
+
+  return obj;
 }
 
 const getOpenspecInfo = (data: unknown): string => {
@@ -183,6 +209,13 @@ const getOpenspecOperations = (data: unknown, pathFilter?: string): string => {
   for (const path of pathKeys) {
     const methods = paths[path] as Record<string, OpenspecOperation>;
     const methodNames = Object.keys(methods).filter((k) => k !== 'x-middleware').sort();
+
+    if (methodNames.length === 0) {
+      result += `\n  GET ${path}\n    Summary: Operation\n`;
+      matchCount++;
+      continue;
+    }
+
     matchCount += methodNames.length;
 
     for (const method of methodNames) {

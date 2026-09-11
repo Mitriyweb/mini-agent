@@ -66,14 +66,6 @@ export class PermissionManager {
     }
   }
 
-  addGlobalRule(rule: PermissionRule): void {
-    if (this.globalStore) {
-      this.globalStore.addRule(rule);
-    } else {
-      this.addSessionRule({ ...rule, scope: 'persistent' });
-    }
-  }
-
   evaluate(command: string): 'allow' | 'deny' | 'undecided' {
     return evaluateRules(this.getAllRules(), command);
   }
