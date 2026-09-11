@@ -1,6 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { PermissionConfig, PermissionRule } from '../types/permissions.js';
+import {
+  PermissionEffect,
+  PermissionMatchKind,
+  PermissionScope,
+  type PermissionConfig,
+  type PermissionRule,
+} from '../types/permissions.js';
 
 export class PermissionStore {
   readonly configPath: string;
@@ -34,16 +40,16 @@ export class PermissionStore {
         .filter((r: any) => {
           if (!r || typeof r !== 'object') return false;
           if (typeof r.pattern !== 'string' || r.pattern.trim().length === 0) return false;
-          if (r.effect !== 'allow' && r.effect !== 'deny') return false;
-          if (r.match !== 'exact' && r.match !== 'glob') return false;
+          if (r.effect !== PermissionEffect.ALLOW && r.effect !== PermissionEffect.DENY) return false;
+          if (r.match !== PermissionMatchKind.EXACT && r.match !== PermissionMatchKind.GLOB) return false;
           return true;
         })
         .map((r: any) => ({
           id: r.id ?? undefined,
-          effect: r.effect,
+          effect: r.effect as PermissionEffect,
           pattern: r.pattern,
-          match: r.match,
-          scope: 'persistent',
+          match: r.match as PermissionMatchKind,
+          scope: PermissionScope.PERSISTENT,
           createdAt: typeof r.createdAt === 'number' ? r.createdAt : undefined,
         }));
 
@@ -62,7 +68,7 @@ export class PermissionStore {
 
     // Save only persistent rules
     const persistentRules = config.rules
-      .filter((r) => r.scope !== 'session')
+      .filter((r) => r.scope !== PermissionScope.SESSION)
       .map((r) => {
         const item: Record<string, any> = {
           effect: r.effect,
@@ -92,7 +98,7 @@ export class PermissionStore {
     const config = this.load();
     const newRule: PermissionRule = {
       ...rule,
-      scope: 'persistent',
+      scope: PermissionScope.PERSISTENT,
       createdAt: rule.createdAt ?? Date.now(),
     };
 

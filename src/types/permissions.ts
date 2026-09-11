@@ -1,8 +1,19 @@
 import type { Tool } from './tools.js';
 
-export type PermissionEffect = 'allow' | 'deny';
-export type PermissionMatchKind = 'exact' | 'glob';
-export type PermissionScope = 'session' | 'persistent';
+export enum PermissionEffect {
+  ALLOW = 'allow',
+  DENY = 'deny',
+}
+
+export enum PermissionMatchKind {
+  EXACT = 'exact',
+  GLOB = 'glob',
+}
+
+export enum PermissionScope {
+  SESSION = 'session',
+  PERSISTENT = 'persistent',
+}
 
 export interface PermissionRule {
   id?: string;
@@ -18,7 +29,12 @@ export interface PermissionConfig {
   rules: PermissionRule[];
 }
 
-export type PermissionDecisionKind = 'allow-once' | 'allow-session' | 'allow-persistent' | 'deny';
+export enum PermissionDecisionKind {
+  ALLOW_ONCE = 'allow-once',
+  ALLOW_SESSION = 'allow-session',
+  ALLOW_PERSISTENT = 'allow-persistent',
+  DENY = 'deny',
+}
 
 export interface PermissionDecision {
   kind: PermissionDecisionKind;

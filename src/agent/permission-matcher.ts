@@ -1,5 +1,9 @@
 import path from 'node:path';
-import type { PermissionRule } from '../types/permissions.js';
+import {
+  PermissionEffect,
+  PermissionMatchKind,
+  type PermissionRule,
+} from '../types/permissions.js';
 
 /**
  * Normalizes command string by trimming and collapsing multiple spaces outside quotes.
@@ -309,31 +313,40 @@ export const matchesGlob = (pattern: string, subcommand: string): boolean => {
  * Evaluates a command against a list of rules adhering to priority:
  * deny > allow exact > allow mask
  */
-export const evaluateRules = (rules: PermissionRule[], command: string): 'allow' | 'deny' | 'undecided' => {
+export const evaluateRules = (
+  rules: PermissionRule[],
+  command: string,
+): 'allow' | 'deny' | 'undecided' => {
   const normCommand = normalizeCommand(command);
   if (!normCommand) return 'undecided';
 
   const subcommands = splitShellCommands(normCommand);
   if (subcommands.length === 0) return 'undecided';
 
-  const denyRules = rules.filter((r) => r.effect === 'deny');
-  const allowExactRules = rules.filter((r) => r.effect === 'allow' && r.match === 'exact');
-  const allowGlobRules = rules.filter((r) => r.effect === 'allow' && r.match === 'glob');
+  const denyRules = rules.filter((r) => r.effect === PermissionEffect.DENY);
+  const allowExactRules = rules.filter(
+    (r) => r.effect === PermissionEffect.ALLOW && r.match === PermissionMatchKind.EXACT,
+  );
+  const allowGlobRules = rules.filter(
+    (r) => r.effect === PermissionEffect.ALLOW && r.match === PermissionMatchKind.GLOB,
+  );
 
   // 1. Check deny rules
   for (const rule of denyRules) {
     const isMatch = (sub: string) =>
-      rule.match === 'exact' ? matchesExact(rule.pattern, sub) : matchesGlob(rule.pattern, sub);
+      rule.match === PermissionMatchKind.EXACT
+        ? matchesExact(rule.pattern, sub)
+        : matchesGlob(rule.pattern, sub);
 
-    if (isMatch(normCommand)) return 'deny';
+    if (isMatch(normCommand)) return PermissionEffect.DENY;
     for (const sub of subcommands) {
-      if (isMatch(sub)) return 'deny';
+      if (isMatch(sub)) return PermissionEffect.DENY;
     }
   }
 
   // 2. Check full command exact match
   for (const rule of allowExactRules) {
-    if (matchesExact(rule.pattern, normCommand)) return 'allow';
+    if (matchesExact(rule.pattern, normCommand)) return PermissionEffect.ALLOW;
   }
 
   // 3. For subcommands, check each against allow rules
@@ -361,5 +374,5 @@ export const evaluateRules = (rules: PermissionRule[], command: string): 'allow'
     }
   }
 
-  return 'allow';
+  return PermissionEffect.ALLOW;
 };

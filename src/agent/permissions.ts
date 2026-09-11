@@ -4,8 +4,14 @@ import { createInterface, type Interface as ReadlineInterface } from 'node:readl
 import concolor from 'concolor';
 import { isInside, Workspace } from './workspace.js';
 import { PermissionManager } from './permission-manager.js';
-import type { Tool } from '../types/tools.js';
-import type { Permissions, PermissionsOptions } from '../types/permissions.js';
+import { TrustKind, type Tool } from '../types/tools.js';
+import {
+  PermissionDecisionKind,
+  PermissionEffect,
+  PermissionMatchKind,
+  type Permissions,
+  type PermissionsOptions,
+} from '../types/permissions.js';
 
 const color = (concolor as any)({
   warn: 'b,yellow',
@@ -88,9 +94,9 @@ export const bashLeavesTrustRoot = (args: any, workspace: Workspace): boolean =>
 export const toolLeavesTrustRoot = (tool: Tool, args: any, workspace: Workspace): boolean => {
   const trustRoot = workspace.gitRoot;
   if (!trustRoot) return true;
-  const trustSetting = typeof tool.trust === 'function' ? tool.trust(args) : tool.trust ?? 'always';
-  if (trustSetting === 'path') return filePathLeavesTrustRoot(args, workspace);
-  if (trustSetting === 'command') return bashLeavesTrustRoot(args, workspace);
+  const trustSetting = typeof tool.trust === 'function' ? tool.trust(args) : tool.trust ?? TrustKind.ALWAYS;
+  if (trustSetting === TrustKind.PATH) return filePathLeavesTrustRoot(args, workspace);
+  if (trustSetting === TrustKind.COMMAND) return bashLeavesTrustRoot(args, workspace);
   return true;
 };
 
@@ -138,8 +144,8 @@ export const createPermissions = (
 
       // 1. Evaluate stored permissions rules
       const evalResult = manager.evaluate(targetStr);
-      if (evalResult === 'allow') return true;
-      if (evalResult === 'deny') return false;
+      if (evalResult === PermissionEffect.ALLOW) return true;
+      if (evalResult === PermissionEffect.DENY) return false;
 
       const candidates = manager.generatePatternCandidates(targetStr);
 
@@ -150,18 +156,18 @@ export const createPermissions = (
           return res;
         }
         if (res && typeof res === 'object') {
-          if (res.kind === 'allow-once') return true;
-          if (res.kind === 'deny') return false;
+          if (res.kind === PermissionDecisionKind.ALLOW_ONCE) return true;
+          if (res.kind === PermissionDecisionKind.DENY) return false;
 
           const pattern = res.pattern || targetStr;
-          const match = res.match || 'exact';
-          const rule = { effect: 'allow' as const, pattern, match };
+          const match = res.match || PermissionMatchKind.EXACT;
+          const rule = { effect: PermissionEffect.ALLOW, pattern, match };
 
-          if (res.kind === 'allow-session') {
+          if (res.kind === PermissionDecisionKind.ALLOW_SESSION) {
             manager.addSessionRule(rule);
             return true;
           }
-          if (res.kind === 'allow-persistent') {
+          if (res.kind === PermissionDecisionKind.ALLOW_PERSISTENT) {
             manager.addPersistentRule(rule);
             return true;
           }
@@ -196,7 +202,7 @@ export const createPermissions = (
           const isGlobal = choice === '4';
 
           let selectedPattern = targetStr;
-          let selectedMatch: 'exact' | 'glob' = 'exact';
+          let selectedMatch: PermissionMatchKind = PermissionMatchKind.EXACT;
 
           if (candidates.length > 1) {
             console.log(`\nSelect pattern to allow:`);
@@ -213,7 +219,7 @@ export const createPermissions = (
             selectedMatch = candidates[0].match;
           }
 
-          const rule = { effect: 'allow' as const, pattern: selectedPattern, match: selectedMatch };
+          const rule = { effect: PermissionEffect.ALLOW, pattern: selectedPattern, match: selectedMatch };
           if (isGlobal) {
             manager.addGlobalRule(rule);
           } else if (choice === '3') {

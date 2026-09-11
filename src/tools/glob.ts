@@ -2,7 +2,7 @@ import path from 'node:path';
 import { globToRegExp, matchGlob } from '../utils/globmatch.js';
 import { truncateOutput } from '../utils/textfile.js';
 import { walkFiles } from '../utils/walk.js';
-import type { Tool, ToolDefinition, ToolEnvironment } from '../types/tools.js';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
 
 const MAX_MATCHES = 200;
 
@@ -37,7 +37,7 @@ export const createGlobTool = (env: ToolEnvironment): Tool<GlobArgs, string> => 
   const { workspace } = env;
   return {
     needsApproval: false,
-    trust: 'path',
+    trust: TrustKind.PATH,
     describe: (args) => `glob ${args.pattern}`,
     async execute(args) {
       const rawPattern = args.pattern;

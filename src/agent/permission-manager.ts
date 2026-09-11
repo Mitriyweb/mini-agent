@@ -1,4 +1,8 @@
-import type { PermissionMatchKind, PermissionRule } from '../types/permissions.js';
+import {
+  PermissionMatchKind,
+  PermissionScope,
+  type PermissionRule,
+} from '../types/permissions.js';
 import { evaluateRules, normalizeCommand, tokenizeCommand } from './permission-matcher.js';
 import { PermissionStore } from './permission-store.js';
 
@@ -40,7 +44,7 @@ export class PermissionManager {
   addSessionRule(rule: PermissionRule): void {
     this.sessionRules.push({
       ...rule,
-      scope: 'session',
+      scope: PermissionScope.SESSION,
       createdAt: rule.createdAt ?? Date.now(),
     });
   }
@@ -50,7 +54,7 @@ export class PermissionManager {
       this.store.addRule(rule);
     } else {
       // Fallback if no store attached
-      this.addSessionRule({ ...rule, scope: 'persistent' });
+      this.addSessionRule({ ...rule, scope: PermissionScope.PERSISTENT });
     }
   }
 
@@ -58,7 +62,7 @@ export class PermissionManager {
     if (this.globalStore) {
       this.globalStore.addRule(rule);
     } else {
-      this.addSessionRule({ ...rule, scope: 'persistent' });
+      this.addSessionRule({ ...rule, scope: PermissionScope.PERSISTENT });
     }
   }
 
@@ -77,7 +81,7 @@ export class PermissionManager {
     candidates.push({
       label: `Exact command: "${norm}"`,
       pattern: norm,
-      match: 'exact',
+      match: PermissionMatchKind.EXACT,
     });
 
     if (tokens.length > 2) {
@@ -86,7 +90,7 @@ export class PermissionManager {
       candidates.push({
         label: `Verb pattern: "${verbPattern}"`,
         pattern: verbPattern,
-        match: 'glob',
+        match: PermissionMatchKind.GLOB,
       });
     }
 
@@ -96,7 +100,7 @@ export class PermissionManager {
       candidates.push({
         label: `Binary pattern: "${binPattern}" (allows all ${tokens[0]} subcommands)`,
         pattern: binPattern,
-        match: 'glob',
+        match: PermissionMatchKind.GLOB,
       });
     }
 

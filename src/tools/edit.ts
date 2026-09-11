@@ -1,5 +1,5 @@
 import { atomicWriteFile, normalizeNewlines, readTextFile } from '../utils/textfile.js';
-import type { Tool, ToolDefinition, ToolEnvironment } from '../types/tools.js';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
 
 export interface EditArgs {
   path: string;
@@ -37,7 +37,7 @@ export const createEditTool = (env: ToolEnvironment): Tool<EditArgs, string> => 
   const { workspace } = env;
   return {
     needsApproval: true,
-    trust: 'path',
+    trust: TrustKind.PATH,
     describe(args) {
       return `edit ${args.path}`;
     },

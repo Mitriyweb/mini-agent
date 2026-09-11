@@ -1,4 +1,4 @@
-import type { Tool, ToolDefinition } from '../types/tools.js';
+import { TrustKind, type Tool, type ToolDefinition } from '../types/tools.js';
 
 const DEFAULT_MAX = 30_000;
 const HARD_MAX = 60_000;
@@ -97,7 +97,7 @@ export const fetchDefinition: ToolDefinition = {
 
 export const createFetchTool = (): Tool<FetchArgs, string> => ({
   needsApproval: true,
-  trust: 'always',
+  trust: TrustKind.ALWAYS,
   describe: (args) => `fetch ${args.url}`,
   async execute(args) {
     const urlText = args.url;

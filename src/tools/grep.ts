@@ -2,7 +2,7 @@ import path from 'node:path';
 import { matchGlob } from '../utils/globmatch.js';
 import { readTextFile, truncateOutput } from '../utils/textfile.js';
 import { walkFiles } from '../utils/walk.js';
-import type { Tool, ToolDefinition, ToolEnvironment } from '../types/tools.js';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
 
 const DEFAULT_MAX = 50;
 const HARD_MAX = 200;
@@ -96,7 +96,7 @@ export const createGrepTool = (env: ToolEnvironment): Tool<GrepArgs, string> => 
   const { workspace } = env;
   return {
     needsApproval: false,
-    trust: 'path',
+    trust: TrustKind.PATH,
     describe: (args) => `grep ${args.pattern}`,
     async execute(args) {
       const pattern = args.pattern;

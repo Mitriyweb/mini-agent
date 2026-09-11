@@ -1,5 +1,5 @@
 import { atomicWriteFile, normalizeNewlines, readTextFile } from '../utils/textfile.js';
-import type { Tool, ToolDefinition, ToolEnvironment } from '../types/tools.js';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
 
 export interface Hunk {
   old_text: string;
@@ -90,7 +90,7 @@ export const createPatchTool = (env: ToolEnvironment): Tool<PatchArgs, string> =
   const { workspace } = env;
   return {
     needsApproval: true,
-    trust: 'path',
+    trust: TrustKind.PATH,
     describe(args) {
       const relativePath = args.path;
       const hunks = args.hunks;

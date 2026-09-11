@@ -8,7 +8,7 @@ import { createDeleteTool } from '../src/tools/delete.js';
 import { createCheckTool } from '../src/tools/check.js';
 import { createGlobTool } from '../src/tools/glob.js';
 import { createOpenspecTool } from '../src/tools/openspec.js';
-import { createTodoTool } from '../src/tools/todo.js';
+import { createTodoTool, TodoStatus } from '../src/tools/todo.js';
 import { createGrepTool } from '../src/tools/grep.js';
 import { createBuiltInRegistry, runAgent } from '../src/agent/agent.js';
 import { createPermissions } from '../src/agent/permissions.js';
@@ -154,10 +154,10 @@ paths:
   it('todo tool correctly tracks and merges tasks', async () => {
     const todoTool = createTodoTool();
     await todoTool.execute({
-      todos: [{ id: 'task-1', content: 'First task', status: 'pending' }],
+      todos: [{ id: 'task-1', content: 'First task', status: TodoStatus.PENDING }],
     });
     const result = await todoTool.execute({
-      todos: [{ id: 'task-1', content: 'First task', status: 'completed' }],
+      todos: [{ id: 'task-1', content: 'First task', status: TodoStatus.COMPLETED }],
       merge: true,
     });
     expect(result).toContain('[completed] task-1: First task');
@@ -187,7 +187,7 @@ paths:
                       function: {
                         name: 'todo',
                         arguments: JSON.stringify({
-                          todos: [{ id: 't1', content: 'mock todo', status: 'in_progress' }],
+                          todos: [{ id: 't1', content: 'mock todo', status: TodoStatus.IN_PROGRESS }],
                         }),
                       },
                     },
