@@ -9,6 +9,8 @@ import { createCompleter } from './agent/completer.js';
 import { loadWorkflows, loadSkills, resolveWorkflowCommand } from './agent/customizations.js';
 import { createProvider } from './agent/llm.js';
 import { createPermissions } from './agent/permissions.js';
+import { promptSelectModel, promptSelectProvider } from './agent/provider-cli.js';
+import { defaultProviderRegistry } from './agent/providers/registry.js';
 import { Workspace } from './agent/workspace.js';
 import { AgentResultStatus, type AgentEvent } from './types/agent.js';
 import packageJson from '../package.json' with { type: 'json' };
@@ -28,6 +30,7 @@ const VERSION = packageJson.version;
 export interface ParsedCLIOptions {
   autoApprove: boolean;
   workspaceDir: string;
+  customProvider?: string;
   customModel?: string;
   customUrl?: string;
   maxSteps: number;
@@ -46,25 +49,28 @@ Usage:
 
 Quick examples:
   mini-agent "Add a small feature to the CLI"
-  mini-agent --dir ./src --max-steps 10 "Refactor a helper"
+  mini-agent --provider openai --model gpt-4o "Refactor a helper"
+  mini-agent --provider router "Run via Model Router"
   mini-agent --auto-approve "Run a task without approval prompts"
-  mini-agent --dir . "Inspect the OpenAPI spec and validate the routes"
 
 Common options:
   -y, --auto-approve, --yes   Auto-approve tool execution without interactive prompt
   --dir <path>                Set project workspace directory
-  --model <model_id>          Override model ID (default: model-router-auto)
-  --url <base_url>            Override API base URL (default: http://localhost:8787/v1)
+  -p, --provider <id>         Override LLM provider (router, openai, anthropic, google)
+  --model <model_id>          Override model ID (default: model-router-auto for router)
+  --url <base_url>            Override API base URL (default: http://localhost:8787/v1 for router)
   --max-steps <number>        Max agent execution steps (default: 30)
   -v, --version               Show the installed version
   -h, --help                  Show this help text
 
 REPL commands:
-  /help       Show workflow, skill, and command help
-  /workflows  List available workflow shortcuts
-  /skills     List available skills
-  /exit       Exit the interactive session
-  /quit       Exit the interactive session
+  /help                  Show workflow, skill, and command help
+  /provider [id]         Select or change LLM provider
+  /model [model_id]      Select or change active model
+  /workflows             List available workflow shortcuts
+  /skills                List available skills
+  /exit                  Exit the interactive session
+  /quit                  Exit the interactive session
 
 Built-in capabilities:
   - Read/write/edit/patch/delete files in the workspace
@@ -75,9 +81,7 @@ Built-in capabilities:
 
 Notes:
   - Default step limit is 30 to prevent runaway agent loops.
-  - Use --max-steps to raise or lower the execution budget for a task.
-  - An empty glob pattern is treated as a workspace-wide match (**), safer than failing.
-  - The openspec tool can read, summarize, and validate OpenAPI-style files.
+  - Direct provider mode bypasses model-router and connects directly to provider APIs.
 `);
 };
 
@@ -91,6 +95,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         'auto-approve': { type: 'boolean', short: 'y', default: false },
         yes: { type: 'boolean', default: false },
         dir: { type: 'string' },
+        provider: { type: 'string', short: 'p' },
         model: { type: 'string' },
         url: { type: 'string' },
         'max-steps': { type: 'string', default: '30' },
@@ -103,6 +108,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     const autoApprove =
       Boolean(parsed.values['auto-approve']) || Boolean(parsed.values.yes) || process.env.AUTO_APPROVE === 'true';
     const help = Boolean(parsed.values.help);
+    const customProvider = (parsed.values.provider as string | undefined) || process.env.PROVIDER;
     const customModel = (parsed.values.model as string | undefined) || process.env.MODEL;
     const customUrl = (parsed.values.url as string | undefined) || process.env.OPENAI_BASE_URL;
     const maxSteps = parseInt((parsed.values['max-steps'] as string) || '30', 10) || DEFAULT_MAX_STEPS;
@@ -129,6 +135,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     return {
       autoApprove,
       workspaceDir,
+      customProvider,
       customModel,
       customUrl,
       maxSteps,
@@ -140,6 +147,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     // Fallback parsing
     let autoApprove = process.env.AUTO_APPROVE === 'true';
     let workspaceDir = process.cwd();
+    let customProvider = process.env.PROVIDER;
     let customModel = process.env.MODEL;
     let customUrl = process.env.OPENAI_BASE_URL;
     let maxSteps = DEFAULT_MAX_STEPS;
@@ -157,6 +165,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         version = true;
       } else if (arg === '--dir' && i + 1 < args.length) {
         workspaceDir = args[++i];
+      } else if ((arg === '-p' || arg === '--provider') && i + 1 < args.length) {
+        customProvider = args[++i];
       } else if (arg === '--model' && i + 1 < args.length) {
         customModel = args[++i];
       } else if (arg === '--url' && i + 1 < args.length) {
@@ -178,6 +188,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     return {
       autoApprove,
       workspaceDir,
+      customProvider,
       customModel,
       customUrl,
       maxSteps,
@@ -248,10 +259,11 @@ export const main = async () => {
   const skills = await loadSkills(workspace.root);
 
   const providerOptions: Record<string, any> = {};
+  if (options.customProvider) providerOptions.provider = options.customProvider;
   if (options.customModel) providerOptions.model = options.customModel;
   if (options.customUrl) providerOptions.baseURL = options.customUrl;
 
-  const provider = createProvider(providerOptions);
+  let provider = createProvider(providerOptions);
   const permissions = createPermissions({ autoApprove: options.autoApprove }, workspace);
   const removeInterruptHandler = installInterruptHandler(() => permissions.close());
 
@@ -259,6 +271,7 @@ export const main = async () => {
   console.log(color.info(`                 mini-agent v${VERSION}               `));
   console.log(color.info('=================================================='));
   console.log(`Workspace : ${workspace.root}`);
+  console.log(`Provider  : ${provider.providerId}`);
   console.log(`Base URL  : ${provider.baseURL}`);
   console.log(`Model     : ${provider.model}`);
   console.log(`AutoApprove: ${options.autoApprove ? 'YES' : 'NO'}`);
@@ -316,7 +329,7 @@ export const main = async () => {
   let sessionAutoApprove = options.autoApprove;
 
   console.log(color.info('Interactive session started. Type your task below or "exit" / "quit" to stop.'));
-  console.log(color.dim('Type /help to see available workflows.\n'));
+  console.log(color.dim('Type /help to see available options and slash commands.\n'));
 
   try {
     while (rl) {
@@ -343,17 +356,75 @@ export const main = async () => {
         continue;
       }
 
+      if (trimmed === '/provider' || trimmed.startsWith('/provider ')) {
+        const arg = trimmed.slice('/provider'.length).trim();
+        let selectedDef = defaultProviderRegistry.get(arg);
+        if (!selectedDef) {
+          if (arg) {
+            console.log(color.warn(`Unknown provider '${arg}'.`));
+          }
+          selectedDef = await promptSelectProvider(rl, defaultProviderRegistry);
+        }
+
+        let selectedModel = options.customModel;
+        if (!arg || !selectedModel) {
+          selectedModel = await promptSelectModel(rl, selectedDef);
+        }
+
+        try {
+          provider = createProvider({
+            provider: selectedDef.id,
+            model: selectedModel,
+            baseURL: options.customUrl,
+          });
+          console.log(color.success(`\nUsing ${selectedDef.name} / ${provider.model}\n`));
+        } catch (err: any) {
+          console.log(color.error(`\nFailed to switch provider: ${err?.message ?? err}\n`));
+        }
+        continue;
+      }
+
+      if (trimmed === '/model' || trimmed.startsWith('/model ')) {
+        const arg = trimmed.slice('/model'.length).trim();
+        let selectedModel = arg;
+
+        if (!selectedModel) {
+          const providerDef = defaultProviderRegistry.get(provider.providerId) ?? defaultProviderRegistry.get('router')!;
+          selectedModel = await promptSelectModel(rl, providerDef, {
+            apiKey: provider.apiKey,
+            baseURL: provider.baseURL,
+          });
+        }
+
+        try {
+          provider = createProvider({
+            provider: provider.providerId,
+            model: selectedModel,
+            baseURL: options.customUrl,
+          });
+          console.log(color.success(`\nUsing ${provider.providerId} / ${provider.model}\n`));
+        } catch (err: any) {
+          console.log(color.error(`\nFailed to switch model: ${err?.message ?? err}\n`));
+        }
+        continue;
+      }
+
       if (trimmed === '/help') {
         console.log(color.info('\n--- Built-in commands ---'));
-        console.log('  /help      Show this help text');
-        console.log('  /workflows List available workflow shortcuts');
-        console.log('  /skills    List available skills');
+        console.log('  /help                Show this help text');
+        console.log('  /provider [id]       Select or change LLM provider');
+        console.log('  /model [model_id]    Select or change active model');
+        console.log('  /workflows           List available workflow shortcuts');
+        console.log('  /skills              List available skills');
         console.log('  /max-steps <number>  Change the step limit for new tasks');
         console.log('  /auto-approve [on|off]  Toggle or set approval prompts');
-        console.log('  /exit      Exit the interactive session');
-        console.log('  /quit      Exit the interactive session');
+        console.log('  /exit                Exit the interactive session');
+        console.log('  /quit                Exit the interactive session');
 
         console.log(color.info('\n--- Session options ---'));
+        console.log(`  Provider            : ${provider.providerId}`);
+        console.log(`  Model               : ${provider.model}`);
+        console.log(`  Base URL            : ${provider.baseURL}`);
         console.log(`  --max-steps ${sessionMaxSteps}   Maximum agent steps for each task`);
         console.log(`  --auto-approve ${sessionAutoApprove ? 'on' : 'off'}  Skip tool approval prompts`);
 
@@ -368,8 +439,9 @@ export const main = async () => {
         }
 
         console.log(color.info('\n--- Examples ---'));
+        console.log('  /provider openai');
+        console.log('  /model gpt-4o');
         console.log('  /review-and-commit');
-        console.log('  /codebase-onboarding');
         console.log('  exit');
         console.log('');
         continue;

@@ -8,7 +8,17 @@ export interface CompleterOptions {
   skills?: Skill[];
 }
 
-const BUILTIN_SLASH_COMMANDS = ['/help', '/workflows', '/skills', '/max-steps', '/auto-approve', '/exit', '/quit'];
+const BUILTIN_SLASH_COMMANDS = [
+  '/help',
+  '/workflows',
+  '/skills',
+  '/provider',
+  '/model',
+  '/max-steps',
+  '/auto-approve',
+  '/exit',
+  '/quit',
+];
 const BUILTIN_ACTION_KEYWORDS = ['exit', 'quit', 'help', 'check', 'build', 'test', 'run', 'refactor', 'fix'];
 
 export const getPathCompletions = (workspaceRoot: string, token: string): string[] => {
