@@ -13,6 +13,10 @@ import { promptSelectModel, promptSelectProvider } from './agent/provider-cli.js
 import { defaultProviderRegistry } from './agent/providers/registry.js';
 import { Workspace } from './agent/workspace.js';
 import { AgentResultStatus, type AgentEvent } from './types/agent.js';
+import { resolveAgentConfig, type PartialAgentConfig } from './agent/config.js';
+import { Logger, type LogLevel } from './agent/logging.js';
+import { UsageTracker } from './agent/usage-tracker.js';
+import { filterSkills } from './agent/skills.js';
 import packageJson from '../package.json' with { type: 'json' };
 
 const color = (concolor as any)({
@@ -37,6 +41,12 @@ export interface ParsedCLIOptions {
   help: boolean;
   version: boolean;
   task: string;
+  logLevel?: LogLevel;
+  costTracking?: boolean;
+  skillsEnabled?: boolean;
+  skillsAllow?: string[];
+  systemPromptEnabled?: boolean;
+  configPath?: string;
 }
 
 export const printHelp = () => {
@@ -49,9 +59,11 @@ Usage:
 
 Quick examples:
   mini-agent "Add a small feature to the CLI"
-  mini-agent --provider openai --model gpt-4o "Refactor a helper"
-  mini-agent --provider router "Run via Model Router"
-  mini-agent --auto-approve "Run a task without approval prompts"
+  mini-agent --log-level verbose "Fix the failing tests"
+  mini-agent --cost-tracking "Refactor authentication"
+  mini-agent --skills git,code-review "Review this PR"
+  mini-agent --no-skills "Analyze this code"
+  mini-agent --no-system-prompt "Custom task without default prompt"
 
 Common options:
   -y, --auto-approve, --yes   Auto-approve tool execution without interactive prompt
@@ -60,6 +72,14 @@ Common options:
   --model <model_id>          Override model ID (default: model-router-auto for router)
   --url <base_url>            Override API base URL (default: http://localhost:8787/v1 for router)
   --max-steps <number>        Max agent execution steps (default: 30)
+  --log-level <level>         Set log level: off, normal, verbose (default: normal)
+  --cost-tracking             Enable LLM token usage & cost tracking
+  --no-cost-tracking          Disable LLM token usage & cost tracking
+  --no-skills                 Disable all skills loading and prompt injection
+  --skills <skill1,skill2>    Comma-separated list of allowed skills
+  --system-prompt             Enable standard built-in system prompt (default)
+  --no-system-prompt          Disable standard built-in system prompt
+  --config <path>             Path to configuration YAML/JSON file
   -v, --version               Show the installed version
   -h, --help                  Show this help text
 
@@ -71,17 +91,6 @@ REPL commands:
   /skills                List available skills
   /exit                  Exit the interactive session
   /quit                  Exit the interactive session
-
-Built-in capabilities:
-  - Read/write/edit/patch/delete files in the workspace
-  - Search with glob and grep
-  - Run bash and syntax checks
-  - Inspect OpenAPI/JSON/YAML specs via the openspec tool
-  - Run workflow-driven tasks from slash commands
-
-Notes:
-  - Default step limit is 30 to prevent runaway agent loops.
-  - Direct provider mode bypasses model-router and connects directly to provider APIs.
 `);
 };
 
@@ -99,6 +108,14 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         model: { type: 'string' },
         url: { type: 'string' },
         'max-steps': { type: 'string', default: '30' },
+        'log-level': { type: 'string' },
+        'cost-tracking': { type: 'boolean', default: undefined },
+        'no-cost-tracking': { type: 'boolean', default: false },
+        'no-skills': { type: 'boolean', default: false },
+        skills: { type: 'string' },
+        'system-prompt': { type: 'boolean', default: undefined },
+        'no-system-prompt': { type: 'boolean', default: false },
+        config: { type: 'string' },
         version: { type: 'boolean', short: 'v', default: false },
         help: { type: 'boolean', short: 'h', default: false },
       },
@@ -113,6 +130,42 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     const customUrl = (parsed.values.url as string | undefined) || process.env.OPENAI_BASE_URL;
     const maxSteps = parseInt((parsed.values['max-steps'] as string) || '30', 10) || DEFAULT_MAX_STEPS;
     const version = Boolean(parsed.values.version);
+
+    let logLevel: LogLevel | undefined;
+    if (parsed.values['log-level']) {
+      const levelStr = (parsed.values['log-level'] as string).toLowerCase();
+      if (levelStr === 'off' || levelStr === 'normal' || levelStr === 'verbose') {
+        logLevel = levelStr as LogLevel;
+      }
+    }
+
+    let costTracking: boolean | undefined;
+    if (parsed.values['no-cost-tracking']) {
+      costTracking = false;
+    } else if (parsed.values['cost-tracking'] === true) {
+      costTracking = true;
+    }
+
+    let skillsEnabled: boolean | undefined;
+    let skillsAllow: string[] | undefined;
+    if (parsed.values['no-skills']) {
+      skillsEnabled = false;
+    } else if (parsed.values.skills) {
+      skillsEnabled = true;
+      skillsAllow = (parsed.values.skills as string)
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+    }
+
+    let systemPromptEnabled: boolean | undefined;
+    if (parsed.values['no-system-prompt']) {
+      systemPromptEnabled = false;
+    } else if (parsed.values['system-prompt'] === true) {
+      systemPromptEnabled = true;
+    }
+
+    const configPath = parsed.values.config as string | undefined;
 
     let workspaceDir = (parsed.values.dir as string | undefined) || process.cwd();
     const positionals = parsed.positionals;
@@ -142,9 +195,15 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       help,
       version,
       task: taskParts.join(' ').trim(),
+      logLevel,
+      costTracking,
+      skillsEnabled,
+      skillsAllow,
+      systemPromptEnabled,
+      configPath,
     };
   } catch {
-    // Fallback parsing
+    // Fallback manual parsing
     let autoApprove = process.env.AUTO_APPROVE === 'true';
     let workspaceDir = process.cwd();
     let customProvider = process.env.PROVIDER;
@@ -153,6 +212,12 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     let maxSteps = DEFAULT_MAX_STEPS;
     let help = false;
     let version = false;
+    let logLevel: LogLevel | undefined;
+    let costTracking: boolean | undefined;
+    let skillsEnabled: boolean | undefined;
+    let skillsAllow: string[] | undefined;
+    let systemPromptEnabled: boolean | undefined;
+    let configPath: string | undefined;
     const taskParts: string[] = [];
 
     for (let i = 0; i < args.length; i++) {
@@ -173,6 +238,24 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         customUrl = args[++i];
       } else if (arg === '--max-steps' && i + 1 < args.length) {
         maxSteps = parseInt(args[++i], 10) || DEFAULT_MAX_STEPS;
+      } else if (arg === '--log-level' && i + 1 < args.length) {
+        const val = args[++i].toLowerCase();
+        if (val === 'off' || val === 'normal' || val === 'verbose') logLevel = val as LogLevel;
+      } else if (arg === '--cost-tracking') {
+        costTracking = true;
+      } else if (arg === '--no-cost-tracking') {
+        costTracking = false;
+      } else if (arg === '--no-skills') {
+        skillsEnabled = false;
+      } else if (arg === '--skills' && i + 1 < args.length) {
+        skillsEnabled = true;
+        skillsAllow = args[++i].split(',').map((s: string) => s.trim()).filter(Boolean);
+      } else if (arg === '--system-prompt') {
+        systemPromptEnabled = true;
+      } else if (arg === '--no-system-prompt') {
+        systemPromptEnabled = false;
+      } else if (arg === '--config' && i + 1 < args.length) {
+        configPath = args[++i];
       } else if (
         !arg.startsWith('-') &&
         taskParts.length === 0 &&
@@ -195,34 +278,42 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       help,
       version,
       task: taskParts.join(' ').trim(),
+      logLevel,
+      costTracking,
+      skillsEnabled,
+      skillsAllow,
+      systemPromptEnabled,
+      configPath,
     };
   }
 };
 
-export const createEventHandler = () => {
+export const createEventHandler = (logger: Logger) => {
   return async (event: AgentEvent) => {
+    if (logger.isOff()) return;
+
     switch (event.type) {
       case 'step':
-        console.log(color.info(`\n[Step ${event.step}/${event.maxSteps}] Using model: ${event.model}`));
+        logger.logNormal(color.info(`\n[Step ${event.step}/${event.maxSteps}] Using model: ${event.model}`));
         break;
       case 'tool':
-        console.log(color.cyan(`⚡ Tool Call: ${event.name}`));
+        logger.logNormal(color.cyan(`⚡ Tool Call: ${event.name}`));
         if (event.argsText && event.argsText !== '{}') {
-          console.log(color.dim(`   Arguments: ${event.argsText}`));
+          logger.logNormal(color.dim(`   Arguments: ${event.argsText}`));
         }
         break;
       case 'result': {
         const badge = event.status === AgentResultStatus.OK ? color.success('✔') : color.error('✖');
-        console.log(`${badge} Tool Result (${event.name}): status=${event.status}`);
+        logger.logNormal(`${badge} Tool Result (${event.name}): status=${event.status}`);
         if (event.preview) {
           const lines = event.preview.split('\n').slice(0, 5).join('\n');
-          console.log(color.dim(`   Output:\n${lines}`));
+          logger.logNormal(color.dim(`   Output:\n${lines}`));
         }
         break;
       }
       case 'assistant':
-        console.log(color.success('\n🤖 Assistant:'));
-        console.log(event.text);
+        logger.logNormal(color.success('\n🤖 Assistant:'));
+        logger.logNormal(event.text);
         break;
     }
   };
@@ -253,56 +344,97 @@ export const main = async () => {
     return;
   }
 
+  const cliOverrides: PartialAgentConfig = {
+    logging: options.logLevel ? { level: options.logLevel } : undefined,
+    costTracking: options.costTracking !== undefined ? { enabled: options.costTracking } : undefined,
+    skills:
+      options.skillsEnabled !== undefined || options.skillsAllow !== undefined
+        ? { enabled: options.skillsEnabled ?? true, allow: options.skillsAllow }
+        : undefined,
+    systemPrompt: options.systemPromptEnabled !== undefined ? { enabled: options.systemPromptEnabled } : undefined,
+    provider: options.customProvider,
+    model: options.customModel,
+    baseURL: options.customUrl,
+    maxSteps: options.maxSteps,
+    autoApprove: options.autoApprove,
+    configPath: options.configPath,
+  };
+
+  const resolvedConfig = resolveAgentConfig(cliOverrides, options.workspaceDir);
+  const logger = new Logger({ level: resolvedConfig.logging.level });
+
   const workspace = await Workspace.open(options.workspaceDir);
 
   const workflows = await loadWorkflows(workspace.root);
-  const skills = await loadSkills(workspace.root);
+  const allSkills = await loadSkills(workspace.root);
+  const filteredSkills = filterSkills(allSkills, resolvedConfig.skills);
 
   const providerOptions: Record<string, any> = {};
-  if (options.customProvider) providerOptions.provider = options.customProvider;
-  if (options.customModel) providerOptions.model = options.customModel;
-  if (options.customUrl) providerOptions.baseURL = options.customUrl;
+  if (resolvedConfig.provider) providerOptions.provider = resolvedConfig.provider;
+  if (resolvedConfig.model) providerOptions.model = resolvedConfig.model;
+  if (resolvedConfig.baseURL) providerOptions.baseURL = resolvedConfig.baseURL;
 
   let provider = createProvider(providerOptions);
-  const permissions = createPermissions({ autoApprove: options.autoApprove }, workspace);
+  const permissions = createPermissions({ autoApprove: resolvedConfig.autoApprove }, workspace);
   const removeInterruptHandler = installInterruptHandler(() => permissions.close());
 
-  console.log(color.info('=================================================='));
-  console.log(color.info(`                 mini-agent v${VERSION}               `));
-  console.log(color.info('=================================================='));
-  console.log(`Workspace : ${workspace.root}`);
-  console.log(`Provider  : ${provider.providerId}`);
-  console.log(`Base URL  : ${provider.baseURL}`);
-  console.log(`Model     : ${provider.model}`);
-  console.log(`AutoApprove: ${options.autoApprove ? 'YES' : 'NO'}`);
-  if (workflows.length > 0) console.log(`Workflows : ${workflows.map((w) => w.command).join(', ')}`);
-  if (skills.length > 0) console.log(`Skills    : ${skills.map((s) => s.name).join(', ')}`);
-  console.log('--------------------------------------------------\n');
+  if (!logger.isOff()) {
+    console.log(color.info('=================================================='));
+    console.log(color.info(`                 mini-agent v${VERSION}               `));
+    console.log(color.info('=================================================='));
+    console.log(`Workspace   : ${workspace.root}`);
+    console.log(`Provider    : ${provider.providerId}`);
+    console.log(`Base URL    : ${provider.baseURL}`);
+    console.log(`Model       : ${provider.model}`);
+    console.log(`AutoApprove : ${resolvedConfig.autoApprove ? 'YES' : 'NO'}`);
+    console.log(`Log Level   : ${resolvedConfig.logging.level}`);
+    console.log(`Cost Track  : ${resolvedConfig.costTracking.enabled ? 'YES' : 'NO'}`);
+    console.log(`Skills      : ${resolvedConfig.skills.enabled ? filteredSkills.map((s) => s.name).join(', ') || '(none)' : 'DISABLED'}`);
+    console.log(`SystemPrompt: ${resolvedConfig.systemPrompt.enabled ? (resolvedConfig.systemPrompt.path ? resolvedConfig.systemPrompt.path : 'DEFAULT') : 'DISABLED'}`);
+    if (workflows.length > 0) console.log(`Workflows   : ${workflows.map((w) => w.command).join(', ')}`);
+    console.log('--------------------------------------------------\n');
+  }
 
-  const onEvent = createEventHandler();
+  const onEvent = createEventHandler(logger);
 
   if (options.task) {
     const resolvedWf = resolveWorkflowCommand(options.task, workflows);
     const taskText = resolvedWf?.matched ? resolvedWf.prompt : options.task;
-    if (resolvedWf?.matched) {
-      console.log(color.cyan(`Workflow: ${resolvedWf.workflow.command} (${resolvedWf.workflow.name})\n`));
-    } else {
-      console.log(color.cyan(`Task: ${options.task}\n`));
+    if (!logger.isOff()) {
+      if (resolvedWf?.matched) {
+        console.log(color.cyan(`Workflow: ${resolvedWf.workflow.command} (${resolvedWf.workflow.name})\n`));
+      } else {
+        console.log(color.cyan(`Task: ${options.task}\n`));
+      }
     }
     try {
+      const usageTracker = new UsageTracker(resolvedConfig.costTracking);
       await runAgent({
         task: taskText,
         provider,
         permissions,
         workspace,
-        maxSteps: options.maxSteps,
+        maxSteps: resolvedConfig.maxSteps ?? options.maxSteps,
         onEvent,
         workflows,
-        skills,
+        skills: allSkills,
+        logging: resolvedConfig.logging,
+        costTracking: resolvedConfig.costTracking,
+        skillsConfig: resolvedConfig.skills,
+        systemPromptConfig: resolvedConfig.systemPrompt,
+        logger,
+        usageTracker,
       });
-      console.log(color.success('\nTask completed successfully.'));
+
+      if (!logger.isOff()) {
+        console.log(color.success('\nTask completed successfully.'));
+      }
+
+      if (resolvedConfig.costTracking.enabled) {
+        console.log(`\n${usageTracker.formatSummary()}`);
+      }
     } catch (err) {
-      console.error(color.error(`\nAgent error: ${errorText(err)}`));
+      logger.logError('Agent execution error', err);
       process.exitCode = 1;
     } finally {
       removeInterruptHandler();
@@ -315,21 +447,23 @@ export const main = async () => {
   const completer = createCompleter({
     workspaceRoot: workspace.root,
     workflows,
-    skills,
+    skills: filteredSkills,
   });
   const rl = createInterface({ input: process.stdin, output: process.stdout, completer });
-  const permissionsRepl = createPermissions({ autoApprove: options.autoApprove, rl }, workspace);
+  const permissionsRepl = createPermissions({ autoApprove: resolvedConfig.autoApprove, rl }, workspace);
   const removeInterruptHandlerRepl = installInterruptHandler(() => {
     rl.close();
     permissionsRepl.close();
   });
 
   let priorMessages = null;
-  let sessionMaxSteps = options.maxSteps;
-  let sessionAutoApprove = options.autoApprove;
+  let sessionMaxSteps = resolvedConfig.maxSteps ?? options.maxSteps;
+  let sessionAutoApprove = resolvedConfig.autoApprove;
 
-  console.log(color.info('Interactive session started. Type your task below or "exit" / "quit" to stop.'));
-  console.log(color.dim('Type /help to see available options and slash commands.\n'));
+  if (!logger.isOff()) {
+    console.log(color.info('Interactive session started. Type your task below or "exit" / "quit" to stop.'));
+    console.log(color.dim('Type /help to see available options and slash commands.\n'));
+  }
 
   try {
     while (rl) {
@@ -344,10 +478,12 @@ export const main = async () => {
 
       if (trimmed === '/skills') {
         console.log(color.info('\n--- Skills ---'));
-        if (skills.length === 0) {
-          console.log(color.dim('  (none found)'));
+        if (!resolvedConfig.skills.enabled) {
+          console.log(color.dim('  (skills are disabled)'));
+        } else if (filteredSkills.length === 0) {
+          console.log(color.dim('  (none available)'));
         } else {
-          for (const skill of skills) {
+          for (const skill of filteredSkills) {
             console.log(color.cyan(`  ${skill.name}`) + ` - ${skill.description}`);
             console.log(color.dim(`      Use with: /${skill.name}`));
           }
@@ -425,6 +561,10 @@ export const main = async () => {
         console.log(`  Provider            : ${provider.providerId}`);
         console.log(`  Model               : ${provider.model}`);
         console.log(`  Base URL            : ${provider.baseURL}`);
+        console.log(`  Log Level           : ${resolvedConfig.logging.level}`);
+        console.log(`  Cost Tracking       : ${resolvedConfig.costTracking.enabled ? 'ON' : 'OFF'}`);
+        console.log(`  Skills Enabled      : ${resolvedConfig.skills.enabled ? 'YES' : 'NO'}`);
+        console.log(`  System Prompt       : ${resolvedConfig.systemPrompt.enabled ? 'ENABLED' : 'DISABLED'}`);
         console.log(`  --max-steps ${sessionMaxSteps}   Maximum agent steps for each task`);
         console.log(`  --auto-approve ${sessionAutoApprove ? 'on' : 'off'}  Skip tool approval prompts`);
 
@@ -498,6 +638,7 @@ export const main = async () => {
       }
 
       try {
+        const usageTracker = new UsageTracker(resolvedConfig.costTracking);
         const result = await runAgent({
           task: taskToRun,
           provider,
@@ -507,11 +648,21 @@ export const main = async () => {
           onEvent,
           priorMessages,
           workflows,
-          skills,
+          skills: allSkills,
+          logging: resolvedConfig.logging,
+          costTracking: resolvedConfig.costTracking,
+          skillsConfig: resolvedConfig.skills,
+          systemPromptConfig: resolvedConfig.systemPrompt,
+          logger,
+          usageTracker,
         });
         priorMessages = result.messages;
+
+        if (resolvedConfig.costTracking.enabled) {
+          console.log(`\n${usageTracker.formatSummary()}`);
+        }
       } catch (err) {
-        console.error(color.error(`\nAgent error: ${errorText(err)}`));
+        logger.logError('Agent execution error', err);
       }
       console.log('\n--------------------------------------------------');
     }

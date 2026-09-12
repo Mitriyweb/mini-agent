@@ -11,6 +11,11 @@ export * from './agent/llm.js';
 export * from './agent/permissions.js';
 export * from './agent/workspace.js';
 
+export * from './agent/logging.js';
+export * from './agent/usage-tracker.js';
+export * from './agent/skills.js';
+export * from './agent/system-prompt.js';
+
 export * from './tools/registry.js';
 export * from './tools/read.js';
 export * from './tools/write.js';
