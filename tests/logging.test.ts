@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'bun:test';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { Logger, redactSecrets } from '../src/agent/logging.js';
-import { parseArgs } from '../src/start.js';
+import { createEventHandler, parseArgs } from '../src/start.js';
 import { resolveAgentConfig } from '../src/agent/config.js';
 
 describe('Logging Subsystem Test Suite', () => {
@@ -67,5 +70,94 @@ describe('Logging Subsystem Test Suite', () => {
     const config = resolveAgentConfig({ logging: cliOptions.logLevel ? { level: cliOptions.logLevel } : undefined });
 
     expect(config.logging.level).toBe('verbose');
+  });
+
+  it('resolves a default log file in the current working directory when logging is enabled', () => {
+    const config = resolveAgentConfig({ logging: { level: 'normal' } });
+
+    expect(config.logging.filePath).toBe(path.join(process.cwd(), 'mini-agent.log'));
+  });
+
+  it('Logger creates the configured file immediately on construction', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mini-agent-log-test-'));
+    const logFile = path.join(tempDir, 'mini-agent.log');
+
+    try {
+      const logger = new Logger({ level: 'normal', filePath: logFile });
+
+      expect(await fs.access(logFile).then(() => true).catch(() => false)).toBe(true);
+      expect(logger.isOff()).toBe(false);
+
+      logger.logNormal('file log message');
+
+      const contents = await fs.readFile(logFile, 'utf8');
+      expect(contents).toContain('file log message');
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('Logger writes messages only to the configured file when file logging is enabled', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mini-agent-log-test-'));
+    const logFile = path.join(tempDir, 'mini-agent.log');
+    const originalConsoleLog = console.log;
+    const loggedToConsole: string[] = [];
+
+    try {
+      console.log = (...args: any[]) => {
+        loggedToConsole.push(args.join(' '));
+      };
+
+      const logger = new Logger({ level: 'normal', filePath: logFile });
+      logger.logNormal('file log message');
+
+      const contents = await fs.readFile(logFile, 'utf8');
+      expect(contents).toContain('file log message');
+      expect(loggedToConsole).toEqual([]);
+    } finally {
+      console.log = originalConsoleLog;
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('createEventHandler keeps assistant output out of file logs while still printing it to the terminal', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mini-agent-log-test-'));
+    const logFile = path.join(tempDir, 'mini-agent.log');
+    const originalConsoleLog = console.log;
+    const loggedToConsole: string[] = [];
+
+    try {
+      console.log = (...args: any[]) => {
+        loggedToConsole.push(args.join(' '));
+      };
+
+      const logger = new Logger({ level: 'normal', filePath: logFile });
+      const onEvent = createEventHandler(logger);
+
+      await onEvent({ type: 'assistant', text: 'assistant reply text' } as any);
+
+      const contents = await fs.readFile(logFile, 'utf8');
+      expect(contents).toBe('');
+      expect(loggedToConsole.join('\n')).toContain('assistant reply text');
+    } finally {
+      console.log = originalConsoleLog;
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('Logger writes messages to a file when configured', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mini-agent-log-test-'));
+    const logFile = path.join(tempDir, 'mini-agent.log');
+
+    try {
+      const logger = new Logger({ level: 'normal', filePath: logFile });
+
+      logger.logNormal('file log message');
+
+      const contents = await fs.readFile(logFile, 'utf8');
+      expect(contents).toContain('file log message');
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
   });
 });

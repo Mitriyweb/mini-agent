@@ -87,6 +87,9 @@ REPL commands:
   /help                  Show workflow, skill, and command help
   /provider [id]         Select or change LLM provider
   /model [model_id]      Select or change active model
+  /log-level [level]     Change current session log level (off, normal, verbose)
+  /cost-tracking [on|off|toggle]  Toggle LLM cost tracking for this session
+  /system-prompt [on|off|toggle] Toggle built-in system prompt for this session
   /workflows             List available workflow shortcuts
   /skills                List available skills
   /exit                  Exit the interactive session
@@ -312,6 +315,11 @@ export const createEventHandler = (logger: Logger) => {
         break;
       }
       case 'assistant':
+        if (logger.hasFilePath()) {
+          console.log(color.success('\n🤖 Assistant:'));
+          console.log(event.text);
+          break;
+        }
         logger.logNormal(color.success('\n🤖 Assistant:'));
         logger.logNormal(event.text);
         break;
@@ -361,7 +369,7 @@ export const main = async () => {
   };
 
   const resolvedConfig = resolveAgentConfig(cliOverrides, options.workspaceDir);
-  const logger = new Logger({ level: resolvedConfig.logging.level });
+  const logger = new Logger({ level: resolvedConfig.logging.level, filePath: resolvedConfig.logging.filePath });
 
   const workspace = await Workspace.open(options.workspaceDir);
 
@@ -550,6 +558,9 @@ export const main = async () => {
         console.log('  /help                Show this help text');
         console.log('  /provider [id]       Select or change LLM provider');
         console.log('  /model [model_id]    Select or change active model');
+        console.log('  /log-level [level]   Change current session log level (off, normal, verbose)');
+        console.log('  /cost-tracking [on|off|toggle]  Toggle LLM cost tracking for this session');
+        console.log('  /system-prompt [on|off|toggle] Toggle built-in system prompt for this session');
         console.log('  /workflows           List available workflow shortcuts');
         console.log('  /skills              List available skills');
         console.log('  /max-steps <number>  Change the step limit for new tasks');
@@ -622,6 +633,47 @@ export const main = async () => {
         sessionAutoApprove = value === 'on' || (value !== 'off' && !sessionAutoApprove);
         permissionsRepl.setAutoApprove(sessionAutoApprove);
         console.log(color.success(`Auto-approve ${sessionAutoApprove ? 'enabled' : 'disabled'}.\n`));
+        continue;
+      }
+
+      if (trimmed === '/log-level' || trimmed.startsWith('/log-level ')) {
+        const value = trimmed.slice('/log-level'.length).trim().toLowerCase();
+        if (!value || (value !== 'off' && value !== 'normal' && value !== 'verbose')) {
+          console.log(color.warn('Usage: /log-level [off|normal|verbose]\n'));
+          continue;
+        }
+
+        resolvedConfig.logging.level = value as LogLevel;
+        logger.level = value as LogLevel;
+        console.log(color.success(`Log level set to ${resolvedConfig.logging.level}.\n`));
+        continue;
+      }
+
+      if (trimmed === '/cost-tracking' || trimmed.startsWith('/cost-tracking ')) {
+        const value = trimmed.slice('/cost-tracking'.length).trim().toLowerCase();
+
+        if (value !== '' && value !== 'on' && value !== 'off' && value !== 'toggle') {
+          console.log(color.warn('Usage: /cost-tracking [on|off|toggle]\n'));
+          continue;
+        }
+
+        const nextEnabled = value === 'on' || (value !== 'off' && !resolvedConfig.costTracking.enabled);
+        resolvedConfig.costTracking.enabled = nextEnabled;
+        console.log(color.success(`Cost tracking ${nextEnabled ? 'enabled' : 'disabled'} for this session.\n`));
+        continue;
+      }
+
+      if (trimmed === '/system-prompt' || trimmed.startsWith('/system-prompt ')) {
+        const value = trimmed.slice('/system-prompt'.length).trim().toLowerCase();
+
+        if (value !== '' && value !== 'on' && value !== 'off' && value !== 'toggle') {
+          console.log(color.warn('Usage: /system-prompt [on|off|toggle]\n'));
+          continue;
+        }
+
+        const nextEnabled = value === 'on' || (value !== 'off' && !resolvedConfig.systemPrompt.enabled);
+        resolvedConfig.systemPrompt.enabled = nextEnabled;
+        console.log(color.success(`System prompt ${nextEnabled ? 'enabled' : 'disabled'} for this session.\n`));
         continue;
       }
 

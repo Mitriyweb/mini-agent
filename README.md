@@ -200,11 +200,14 @@ In interactive mode (`mini-agent`), the following built-in slash commands are av
 |---|---|
 | `/provider [id]` | Show, select, or change LLM provider |
 | `/model [model_id]` | Fetch available models and select active model |
+| `/log-level [off\|normal\|verbose]` | Change the current session log level |
+| `/cost-tracking [on\|off\|toggle]` | Toggle LLM cost tracking for this session |
+| `/system-prompt [on\|off\|toggle]` | Toggle the built-in system prompt for this session |
 | `/help` | Show workflow, skill, provider, and command help |
 | `/workflows` | List available workflow shortcuts |
 | `/skills` | List active skills |
 | `/max-steps <number>` | Set maximum execution steps for new tasks |
-| `/auto-approve [on\|off]` | Toggle tool approval prompts |
+| `/auto-approve [on\|off\|toggle]` | Toggle tool approval prompts |
 | `/exit`, `/quit` | Exit the interactive session |
 
 > In the interactive session, provider and model changes should be performed through slash commands that start with `/`. The environment variables `PROVIDER`, `MODEL`, `OPENAI_BASE_URL`, and `OPENAI_API_KEY` remain useful as defaults for a new session, but the runtime controls are the slash commands above.

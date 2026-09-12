@@ -1,9 +1,12 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import concolor from 'concolor';
 
 export type LogLevel = 'off' | 'normal' | 'verbose';
 
 export interface LoggingConfig {
   level: LogLevel;
+  filePath?: string;
 }
 
 const color = (concolor as any)({
@@ -56,19 +59,39 @@ export const redactSecrets = (data: unknown): unknown => {
 export interface LoggerOptions {
   level?: LogLevel;
   writer?: (message: string) => void;
+  filePath?: string;
 }
 
 export class Logger {
   public level: LogLevel;
   private writer: (message: string) => void;
+  private filePath?: string;
 
   constructor(options: LoggerOptions = {}) {
     this.level = options.level ?? 'normal';
-    this.writer = options.writer ?? ((msg) => console.log(msg));
+    this.filePath = options.filePath ? path.resolve(options.filePath) : undefined;
+
+    const baseWriter = options.writer ?? ((msg) => console.log(msg));
+
+    if (this.filePath) {
+      const dirPath = path.dirname(this.filePath);
+      fs.mkdirSync(dirPath, { recursive: true });
+      fs.closeSync(fs.openSync(this.filePath, 'a'));
+
+      this.writer = (msg) => {
+        fs.appendFileSync(this.filePath!, `${msg}\n`, 'utf8');
+      };
+    } else {
+      this.writer = baseWriter;
+    }
   }
 
   public isOff(): boolean {
     return this.level === 'off';
+  }
+
+  public hasFilePath(): boolean {
+    return this.filePath !== undefined;
   }
 
   public isVerbose(): boolean {

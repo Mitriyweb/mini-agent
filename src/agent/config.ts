@@ -27,6 +27,7 @@ export const getConfig = (): Config => {
 export interface FileConfigSchema {
   logging?: {
     level?: LogLevel;
+    filePath?: string;
   };
   cost_tracking?: {
     enabled?: boolean;
@@ -130,13 +131,14 @@ export const resolveAgentConfig = (
   const fileConfig = loadConfigFile(workspaceRoot, cliOverrides.configPath);
 
   // Defaults
-  const defaultLogging: LoggingConfig = { level: 'normal' };
+  const defaultLogging: LoggingConfig = { level: 'normal', filePath: path.join(process.cwd(), 'mini-agent.log') };
   const defaultCostTracking: CostTrackingConfig = { enabled: false, currency: 'USD', models: {} };
   const defaultSkills: SkillsConfig = { enabled: true, allow: [], deny: [] };
   const defaultSystemPrompt: SystemPromptConfig = { enabled: true };
 
   // File values
   const fileLogging = fileConfig.logging;
+  const envLogFile = (process.env.MINI_AGENT_LOG_FILE || process.env.LOG_FILE) as string | undefined;
   const fileCost = fileConfig.cost_tracking ?? fileConfig.costTracking;
   const fileSkills = fileConfig.skills;
   const fileSysPrompt = fileConfig.system_prompt ?? fileConfig.systemPrompt;
@@ -159,6 +161,12 @@ export const resolveAgentConfig = (
     envLogLevel ??
     fileLogging?.level ??
     defaultLogging.level;
+
+  const filePath: string | undefined =
+    cliOverrides.logging?.filePath ??
+    envLogFile ??
+    fileLogging?.filePath ??
+    (level === 'off' ? undefined : defaultLogging.filePath);
 
   // Merge Cost Tracking
   const costEnabled: boolean =
@@ -225,7 +233,7 @@ export const resolveAgentConfig = (
     fileConfig.auto_approve;
 
   return {
-    logging: { level },
+    logging: { level, filePath },
     costTracking: {
       enabled: costEnabled,
       currency: costCurrency,

@@ -50,6 +50,15 @@ describe('completer test suite', () => {
 
     const [hits3] = completer('/codebase');
     expect(hits3).toContain('/codebase-onboarding');
+
+    const [hits4] = completer('/log');
+    expect(hits4).toContain('/log-level');
+
+    const [hits5] = completer('/cos');
+    expect(hits5).toContain('/cost-tracking');
+
+    const [hits6] = completer('/sys');
+    expect(hits6).toContain('/system-prompt');
   });
 
   it('completes subdirectories and file paths', () => {

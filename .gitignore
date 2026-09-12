@@ -7,3 +7,4 @@ config.js
 .*.bun
 .*.bun-build
 .mini-agent/permissions.json
+mini-agent.log
