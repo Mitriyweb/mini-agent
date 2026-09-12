@@ -1,0 +1,90 @@
+openapi: 3.0.0
+info:
+  title: mini-agent Tools Specification
+  version: 0.1.15
+  description: Specification for mini-agent built-in directory & file manipulation tools, execution tools, and utilities.
+paths:
+  /tools/read:
+    post:
+      summary: Read file contents
+      description: Read text file within workspace with optional line offset and limit.
+      responses:
+        '200':
+          description: File content string.
+  /tools/write:
+    post:
+      summary: Create or overwrite file
+      description: Write full text content to a specified workspace file path.
+      responses:
+        '200':
+          description: Success status.
+  /tools/edit:
+    post:
+      summary: Edit file with string replacement
+      description: Replace exact old_text block with new_text in a target file.
+      responses:
+        '200':
+          description: Edit success message.
+  /tools/patch:
+    post:
+      summary: Apply Unified Diff patch
+      description: Modify file contents using patch format.
+      responses:
+        '200':
+          description: Patch application result.
+  /tools/delete:
+    post:
+      summary: Delete workspace file
+      description: Remove file from workspace filesystem.
+      responses:
+        '200':
+          description: Deletion confirmation message.
+  /tools/glob:
+    post:
+      summary: Find files matching pattern
+      description: Fast glob file matching in workspace.
+      responses:
+        '200':
+          description: List of matching file paths.
+  /tools/grep:
+    post:
+      summary: Search pattern in files
+      description: Regex content search across workspace files.
+      responses:
+        '200':
+          description: Line matches with line numbers.
+  /tools/bash:
+    post:
+      summary: Execute shell command
+      description: Run command in workspace subject to permission checks.
+      responses:
+        '200':
+          description: Standard output and exit status.
+  /tools/check:
+    post:
+      summary: Typecheck TypeScript file
+      description: Runs tsc check on a specific workspace TypeScript file.
+      responses:
+        '200':
+          description: Compiler diagnostic output and exit code.
+  /tools/fetch:
+    post:
+      summary: Fetch web page content
+      description: HTTP fetch web page or URL as text/json.
+      responses:
+        '200':
+          description: Response text content.
+  /tools/todo:
+    post:
+      summary: Manage agent task list
+      description: Track todo task items (pending, in_progress, completed).
+      responses:
+        '200':
+          description: Updated todo state overview.
+  /tools/openspec:
+    post:
+      summary: OpenSpec reader and validator
+      description: Read, inspect, and validate OpenAPI/OpenSpec documents.
+      responses:
+        '200':
+          description: Parsed spec info, paths, operations, or validation diagnostics.
