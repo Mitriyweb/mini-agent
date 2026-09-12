@@ -13,15 +13,15 @@ import {
   splitShellCommands,
   tokenizeCommand,
 } from '../src/agent/permission-matcher.js';
-import { PermissionStore } from '../src/agent/permission-store.ts';
-import { PermissionManager } from '../src/agent/permission-manager.ts';
-import { createPermissions } from '../src/agent/permissions.ts';
+import { PermissionStore } from '../src/agent/permission-store.js';
+import { PermissionManager } from '../src/agent/permission-manager.js';
+import { createPermissions } from '../src/agent/permissions.js';
 import {
   PermissionDecisionKind,
   PermissionEffect,
   PermissionMatchKind,
   type PermissionRule,
-} from '../src/types/permissions.ts';
+} from '../src/types/permissions.js';
 
 describe('Permissions System - Matcher Unit Tests', () => {
   it('normalizeCommand handles spaces and quotes correctly', () => {

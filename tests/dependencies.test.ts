@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { checkDependencyVersions } from '../scripts/check-dependency-versions.ts';
+import { checkDependencyVersions } from '../scripts/check-dependency-versions.js';
 
 describe('Dependency version validation test suite', () => {
   it('package.json dependencies and devDependencies contain only exact versions', async () => {
