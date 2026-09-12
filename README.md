@@ -194,7 +194,7 @@ if (result.usageSummary) {
 
 ## REPL Commands
 
-In interactive mode (`mini-agent`), the following built-in commands are available:
+In interactive mode (`mini-agent`), the following built-in slash commands are available:
 
 | Command | Description |
 |---|---|
@@ -206,6 +206,8 @@ In interactive mode (`mini-agent`), the following built-in commands are availabl
 | `/max-steps <number>` | Set maximum execution steps for new tasks |
 | `/auto-approve [on\|off]` | Toggle tool approval prompts |
 | `/exit`, `/quit` | Exit the interactive session |
+
+> In the interactive session, provider and model changes should be performed through slash commands that start with `/`. The environment variables `PROVIDER`, `MODEL`, `OPENAI_BASE_URL`, and `OPENAI_API_KEY` remain useful as defaults for a new session, but the runtime controls are the slash commands above.
 
 ---
 

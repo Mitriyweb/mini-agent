@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { INSTRUCTIONS } from './instructions.js';
+import { INSTRUCTIONS } from './instructions.ts';
 
 export interface SystemPromptConfig {
   enabled: boolean;

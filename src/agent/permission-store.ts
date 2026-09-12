@@ -6,7 +6,7 @@ import {
   PermissionScope,
   type PermissionConfig,
   type PermissionRule,
-} from '../types/permissions.js';
+} from '../types/permissions.ts';
 
 export class PermissionStore {
   readonly configPath: string;

@@ -1,4 +1,4 @@
-import type { Tool, ToolDefinition } from '../types/tools.js';
+import type { Tool, ToolDefinition } from '../types/tools.ts';
 
 export enum TodoStatus {
   PENDING = 'pending',

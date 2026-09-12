@@ -2,9 +2,9 @@ import {
   PermissionMatchKind,
   PermissionScope,
   type PermissionRule,
-} from '../types/permissions.js';
-import { evaluateRules, normalizeCommand, tokenizeCommand } from './permission-matcher.js';
-import { PermissionStore } from './permission-store.js';
+} from '../types/permissions.ts';
+import { evaluateRules, normalizeCommand, tokenizeCommand } from './permission-matcher.ts';
+import { PermissionStore } from './permission-store.ts';
 
 export interface PermissionManagerOptions {
   configPath?: string;

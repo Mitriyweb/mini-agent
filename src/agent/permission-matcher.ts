@@ -3,7 +3,7 @@ import {
   PermissionEffect,
   PermissionMatchKind,
   type PermissionRule,
-} from '../types/permissions.js';
+} from '../types/permissions.ts';
 
 /**
  * Normalizes command string by trimming and collapsing multiple spaces outside quotes.

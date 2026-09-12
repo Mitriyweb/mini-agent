@@ -1,4 +1,4 @@
-import type { Skill } from './customizations.js';
+import type { Skill } from './customizations.ts';
 
 export interface SkillsConfig {
   enabled: boolean;

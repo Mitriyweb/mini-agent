@@ -1,5 +1,5 @@
-import { runCommand } from '../utils/command.js';
-import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
+import { runCommand } from '../utils/command.ts';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.ts';
 
 export interface BashArgs {
   command: string;

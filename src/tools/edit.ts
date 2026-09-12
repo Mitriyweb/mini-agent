@@ -1,5 +1,5 @@
-import { atomicWriteFile, normalizeNewlines, readTextFile } from '../utils/textfile.js';
-import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
+import { atomicWriteFile, normalizeNewlines, readTextFile } from '../utils/textfile.ts';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.ts';
 
 export interface EditArgs {
   path: string;

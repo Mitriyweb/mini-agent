@@ -1,4 +1,4 @@
-import type { Tool } from './tools.js';
+import type { Tool } from './tools.ts';
 
 export enum PermissionEffect {
   ALLOW = 'allow',

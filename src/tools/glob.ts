@@ -1,8 +1,8 @@
 import path from 'node:path';
-import { globToRegExp, matchGlob } from '../utils/globmatch.js';
-import { truncateOutput } from '../utils/textfile.js';
-import { walkFiles } from '../utils/walk.js';
-import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
+import { globToRegExp, matchGlob } from '../utils/globmatch.ts';
+import { truncateOutput } from '../utils/textfile.ts';
+import { walkFiles } from '../utils/walk.ts';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.ts';
 
 const MAX_MATCHES = 200;
 

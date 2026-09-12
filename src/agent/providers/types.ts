@@ -5,4 +5,4 @@ export type {
   LLMRequest,
   Provider,
   LLMProviderDefinition,
-} from '../../types/llm.js';
+} from '../../types/llm.ts';

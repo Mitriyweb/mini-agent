@@ -4,19 +4,19 @@ import { createInterface } from 'node:readline/promises';
 import { parseArgs as parseNodeArgs } from 'node:util';
 import concolor from 'concolor';
 
-import { errorText, runAgent } from './agent/agent.js';
-import { createCompleter } from './agent/completer.js';
-import { loadWorkflows, loadSkills, resolveWorkflowCommand } from './agent/customizations.js';
-import { createProvider } from './agent/llm.js';
-import { createPermissions } from './agent/permissions.js';
-import { promptSelectModel, promptSelectProvider } from './agent/provider-cli.js';
-import { defaultProviderRegistry } from './agent/providers/registry.js';
-import { Workspace } from './agent/workspace.js';
-import { AgentResultStatus, type AgentEvent } from './types/agent.js';
-import { resolveAgentConfig, type PartialAgentConfig } from './agent/config.js';
-import { Logger, type LogLevel } from './agent/logging.js';
-import { UsageTracker } from './agent/usage-tracker.js';
-import { filterSkills } from './agent/skills.js';
+import { errorText, runAgent } from './agent/agent.ts';
+import { createCompleter } from './agent/completer.ts';
+import { loadWorkflows, loadSkills, resolveWorkflowCommand } from './agent/customizations.ts';
+import { createProvider } from './agent/llm.ts';
+import { createPermissions } from './agent/permissions.ts';
+import { promptSelectModel, promptSelectProvider } from './agent/provider-cli.ts';
+import { defaultProviderRegistry } from './agent/providers/registry.ts';
+import { Workspace } from './agent/workspace.ts';
+import { AgentResultStatus, type AgentEvent } from './types/agent.ts';
+import { resolveAgentConfig, type PartialAgentConfig } from './agent/config.ts';
+import { Logger, type LogLevel } from './agent/logging.ts';
+import { UsageTracker } from './agent/usage-tracker.ts';
+import { filterSkills } from './agent/skills.ts';
 import packageJson from '../package.json' with { type: 'json' };
 
 const color = (concolor as any)({

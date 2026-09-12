@@ -1,4 +1,4 @@
-import type { Workspace } from '../agent/workspace.js';
+import type { Workspace } from '../agent/workspace.ts';
 
 export enum TrustKind {
   PATH = 'path',

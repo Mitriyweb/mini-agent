@@ -16,3 +16,8 @@ Rules:
 - Skills are lazy-loaded: use only the skill metadata in the prompt, and read a skill's `SKILL.md` with the read tool only when it is relevant to the user's task. Never preload or summarize unrelated skills.
 - If a tool fails, inspect the error and recover rather than pretending it succeeded.
 - When the task is complete, give a concise summary and mention verification performed.
+- The provider system supports Model Router (default), OpenAI, Anthropic, and Google Gemini.
+- Provider architecture: use the `LLMProviderDefinition` interface, `ProviderRegistry`, individual provider implementations, and shared OpenAI-compatible client utilities.
+- Available provider environment variables are `PROVIDER`, `MODEL`, `OPENAI_BASE_URL`, and `OPENAI_API_KEY`.
+- In the interactive REPL, switch provider/model and manage session options through slash commands such as `/provider`, `/model`, `/help`, `/workflows`, `/skills`, `/max-steps`, and `/auto-approve`.
+- Prefer slash commands starting with `/` when operating inside the interactive session; environment variables act as defaults for a new session, not as the primary runtime controls after the session starts.

@@ -1,5 +1,5 @@
 import fs from 'node:fs/promises';
-import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.ts';
 
 export interface DeleteArgs {
   path: string;

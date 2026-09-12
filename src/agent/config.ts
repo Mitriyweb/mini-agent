@@ -1,10 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { load as parseYaml } from 'js-yaml';
-import type { LogLevel, LoggingConfig } from './logging.js';
-import type { CostTrackingConfig, ModelPricing } from './usage-tracker.js';
-import type { SkillsConfig } from './skills.js';
-import type { SystemPromptConfig } from './system-prompt.js';
+import type { LogLevel, LoggingConfig } from './logging.ts';
+import type { CostTrackingConfig, ModelPricing } from './usage-tracker.ts';
+import type { SkillsConfig } from './skills.ts';
+import type { SystemPromptConfig } from './system-prompt.ts';
 
 export interface Config {
   PROVIDER?: string;

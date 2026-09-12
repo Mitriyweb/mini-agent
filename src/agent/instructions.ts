@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 const loadPrompt = async (fileName: string): Promise<string> => {
 	if (process.versions.bun) {
-		const prompts = await import('./bun-prompts.js');
+		const prompts = await import('./bun-prompts.ts');
 		return fileName === 'system.md' ? prompts.systemPrompt : prompts.codingStandards;
 	}
 

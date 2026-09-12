@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import concolor from 'concolor';
-import type { LLMRequest, Provider, ProviderClientOptions } from './types.js';
+import type { LLMRequest, Provider, ProviderClientOptions } from './types.ts';
 
 const color = (concolor as any)({
   warn: 'b,yellow',

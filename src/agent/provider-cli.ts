@@ -1,7 +1,7 @@
 import type { Interface as ReadlineInterface } from 'node:readline/promises';
 import concolor from 'concolor';
-import { defaultProviderRegistry, ProviderRegistry } from './providers/registry.js';
-import type { LLMProviderDefinition, ModelInfo } from '../types/llm.js';
+import { defaultProviderRegistry, ProviderRegistry } from './providers/registry.ts';
+import type { LLMProviderDefinition, ModelInfo } from '../types/llm.ts';
 
 const color = (concolor as any)({
   info: 'b,blue',

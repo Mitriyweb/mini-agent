@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { findGitRoot } from '../utils/git.js';
-import type { PathResolution } from '../types/workspace.js';
+import { findGitRoot } from '../utils/git.ts';
+import type { PathResolution } from '../types/workspace.ts';
 
 export const isInside = (root: string, candidate: string): boolean => {
   const prefix = root + path.sep;

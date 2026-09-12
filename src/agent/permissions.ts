@@ -2,16 +2,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline/promises';
 import concolor from 'concolor';
-import { isInside, Workspace } from './workspace.js';
-import { PermissionManager } from './permission-manager.js';
-import { TrustKind, type Tool } from '../types/tools.js';
+import { isInside, Workspace } from './workspace.ts';
+import { PermissionManager } from './permission-manager.ts';
+import { TrustKind, type Tool } from '../types/tools.ts';
 import {
   PermissionDecisionKind,
   PermissionEffect,
   PermissionMatchKind,
   type Permissions,
   type PermissionsOptions,
-} from '../types/permissions.js';
+} from '../types/permissions.ts';
 
 const color = (concolor as any)({
   warn: 'b,yellow',

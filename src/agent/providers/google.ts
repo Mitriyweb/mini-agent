@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
-import { createOpenAICompatibleClient } from './common.js';
-import type { LLMProviderDefinition, ModelInfo, Provider, ProviderClientOptions } from './types.js';
+import { createOpenAICompatibleClient } from './common.ts';
+import type { LLMProviderDefinition, ModelInfo, Provider, ProviderClientOptions } from './types.ts';
 
 export const googleProvider: LLMProviderDefinition = {
   id: 'google',

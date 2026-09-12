@@ -1,5 +1,5 @@
-import { formatNumberedLines, readTextFile } from '../utils/textfile.js';
-import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
+import { formatNumberedLines, readTextFile } from '../utils/textfile.ts';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.ts';
 
 const MAX_LIMIT = 2000;
 

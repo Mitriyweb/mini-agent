@@ -1,8 +1,8 @@
-import { routerProvider } from './router.js';
-import { openaiProvider } from './openai.js';
-import { anthropicProvider } from './anthropic.js';
-import { googleProvider } from './google.js';
-import type { LLMProviderDefinition } from './types.js';
+import { routerProvider } from './router.ts';
+import { openaiProvider } from './openai.ts';
+import { anthropicProvider } from './anthropic.ts';
+import { googleProvider } from './google.ts';
+import type { LLMProviderDefinition } from './types.ts';
 
 export class ProviderRegistry {
   private providers = new Map<string, LLMProviderDefinition>();

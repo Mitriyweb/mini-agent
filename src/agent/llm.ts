@@ -1,9 +1,9 @@
-import { getConfig } from './config.js';
-import { defaultProviderRegistry, ProviderRegistry } from './providers/registry.js';
-import { createOpenAICompatibleClient } from './providers/common.js';
-import type { Provider, ProviderOptions } from '../types/llm.js';
+import { getConfig } from './config.ts';
+import { defaultProviderRegistry, ProviderRegistry } from './providers/registry.ts';
+import { createOpenAICompatibleClient } from './providers/common.ts';
+import type { Provider, ProviderOptions } from '../types/llm.ts';
 
-export { createWithRetry, createOpenAICompatibleClient } from './providers/common.js';
+export { createWithRetry, createOpenAICompatibleClient } from './providers/common.ts';
 
 export const createProvider = (
   options: ProviderOptions & { registry?: ProviderRegistry } = {},

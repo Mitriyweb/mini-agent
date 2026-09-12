@@ -1,6 +1,6 @@
-import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
-import { readTextFile } from '../utils/textfile.js';
-import { globToRegExp } from '../utils/globmatch.js';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.ts';
+import { readTextFile } from '../utils/textfile.ts';
+import { globToRegExp } from '../utils/globmatch.ts';
 
 export interface OpenspecArgs {
   path: string;

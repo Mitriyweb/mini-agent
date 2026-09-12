@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { runFile } from '../utils/command.js';
-import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.js';
+import { runFile } from '../utils/command.ts';
+import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.ts';
 
 export interface CheckArgs {
   path?: string;
@@ -30,7 +30,7 @@ export const createCheckTool = (env: ToolEnvironment): Tool<CheckArgs, string> =
   const { workspace } = env;
 
   const hasCheckScript = async (): Promise<boolean> => {
-    const pkgPath = path.join(workspace.root, 'package.json');
+    const pkgPath = path.join(workspace.root, 'package.tson');
     try {
       const raw = await fs.readFile(pkgPath, 'utf8');
       const pkg = JSON.parse(raw);
@@ -50,7 +50,7 @@ export const createCheckTool = (env: ToolEnvironment): Tool<CheckArgs, string> =
     async execute(args) {
       if (hasPath(args) && args.path) {
         const filePath = await workspace.resolveExistingFile(args.path);
-        if (filePath.endsWith('.js') || filePath.endsWith('.mjs') || filePath.endsWith('.cjs')) {
+        if (filePath.endsWith('.ts') || filePath.endsWith('.mjs') || filePath.endsWith('.cjs')) {
           return runFile('node', ['--check', filePath], workspace.root);
         }
         return runFile('bun', ['x', 'tsc', '--noEmit', filePath], workspace.root);

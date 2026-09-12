@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const packagePath = path.resolve(process.cwd(), 'package.json');
-const bumpType = process.argv[2];
+const bumpType = process.argv[2] || 'patch';
 
 if (!['major', 'minor', 'patch'].includes(bumpType ?? '')) {
   console.error('Usage: bun run bump:version -- <major|minor|patch>');

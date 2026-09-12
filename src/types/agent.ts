@@ -1,12 +1,12 @@
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
-import type { Permissions } from './permissions.js';
-import type { Provider } from './llm.js';
-import type { Workspace } from '../agent/workspace.js';
-import type { Workflow, Skill } from '../agent/customizations.js';
-import type { LogLevel, LoggingConfig, Logger } from '../agent/logging.js';
-import type { CostTrackingConfig, UsageTracker, UsageSummary } from '../agent/usage-tracker.js';
-import type { SkillsConfig } from '../agent/skills.js';
-import type { SystemPromptConfig } from '../agent/system-prompt.js';
+import type { Permissions } from './permissions.ts';
+import type { Provider } from './llm.ts';
+import type { Workspace } from '../agent/workspace.ts';
+import type { Workflow, Skill } from '../agent/customizations.ts';
+import type { LogLevel, LoggingConfig, Logger } from '../agent/logging.ts';
+import type { CostTrackingConfig, UsageTracker, UsageSummary } from '../agent/usage-tracker.ts';
+import type { SkillsConfig } from '../agent/skills.ts';
+import type { SystemPromptConfig } from '../agent/system-prompt.ts';
 
 export enum AgentResultStatus {
   OK = 'ok',

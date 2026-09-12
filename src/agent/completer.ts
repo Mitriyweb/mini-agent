@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Skill, Workflow } from './customizations.js';
+import type { Skill, Workflow } from './customizations.ts';
 
 export interface CompleterOptions {
   workspaceRoot: string;

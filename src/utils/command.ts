@@ -1,6 +1,6 @@
 import { exec, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { truncateOutput } from './textfile.js';
+import { truncateOutput } from './textfile.ts';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);

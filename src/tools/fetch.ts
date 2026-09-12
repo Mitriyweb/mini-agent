@@ -1,4 +1,4 @@
-import { TrustKind, type Tool, type ToolDefinition } from '../types/tools.js';
+import { TrustKind, type Tool, type ToolDefinition } from '../types/tools.ts';
 
 const DEFAULT_MAX = 30_000;
 const HARD_MAX = 60_000;
