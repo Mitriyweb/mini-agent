@@ -1,0 +1,16 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "mini-agent Core OpenSpec",
+    "version": "0.1.15",
+    "description": "Root JSON OpenSpec document for mini-agent architecture."
+  },
+  "paths": {
+    "/project/info": {
+      "get": {
+        "summary": "Project architectural metadata",
+        "description": "Returns high-level metadata and specification layout for mini-agent."
+      }
+    }
+  }
+}

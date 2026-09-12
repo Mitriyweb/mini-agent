@@ -1,0 +1,24 @@
+openapi: 3.0.0
+info:
+  title: mini-agent Tools Specification
+  version: 0.1.15
+  description: Specification for built-in workspace tools.
+paths:
+  /tools/read:
+    post:
+      summary: Read file contents
+      responses:
+        '200':
+          description: File content string.
+  /tools/write:
+    post:
+      summary: Write file contents
+      responses:
+        '200':
+          description: Success status.
+  /tools/openspec:
+    post:
+      summary: OpenSpec reader and validator
+      responses:
+        '200':
+          description: OpenSpec inspection results.

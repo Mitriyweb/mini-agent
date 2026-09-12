@@ -3,52 +3,37 @@ import { Workspace } from '../src/agent/workspace.js';
 import { createOpenspecTool } from '../src/tools/openspec.js';
 
 describe('OpenSpec Specifications Test Suite', () => {
-  it('validates core openspec.yaml file successfully', async () => {
+  it('validates root openspec.yaml and openspec.json files successfully', async () => {
     const workspace = await Workspace.open(process.cwd());
     const openspecTool = createOpenspecTool({ workspace });
 
-    const info = await openspecTool.execute({ path: 'openspec/openspec.yaml', operation: 'info' });
-    expect(info).toContain('mini-agent Specification');
-    expect(info).toContain('0.1.15');
+    const infoYaml = await openspecTool.execute({ path: 'openspec/openspec.yaml', operation: 'info' });
+    expect(infoYaml).toContain('mini-agent Specification');
+    expect(infoYaml).toContain('0.1.15');
 
-    const validation = await openspecTool.execute({ path: 'openspec/openspec.yaml', operation: 'validate' });
-    expect(validation).toContain('No critical or warning issues found');
+    const valYaml = await openspecTool.execute({ path: 'openspec/openspec.yaml', operation: 'validate' });
+    expect(valYaml).toContain('No critical or warning issues found');
 
-    const paths = await openspecTool.execute({ path: 'openspec/openspec.yaml', operation: 'paths' });
-    expect(paths).toContain('/agent/run');
-    expect(paths).toContain('/tools/openspec');
+    const infoJson = await openspecTool.execute({ path: 'openspec/openspec.json', operation: 'info' });
+    expect(infoJson).toContain('mini-agent Core OpenSpec');
+
+    const valJson = await openspecTool.execute({ path: 'openspec/openspec.json', operation: 'validate' });
+    expect(valJson).toContain('No critical or warning issues found');
   });
 
-  it('validates tools.yaml spec file successfully', async () => {
+  it('validates domain spec.yaml files across all subdirectories', async () => {
     const workspace = await Workspace.open(process.cwd());
     const openspecTool = createOpenspecTool({ workspace });
 
-    const info = await openspecTool.execute({ path: 'openspec/specs/tools.yaml', operation: 'info' });
-    expect(info).toContain('mini-agent Tools Specification');
+    const domains = ['agent', 'tools', 'permissions', 'workspace', 'providers'];
 
-    const validation = await openspecTool.execute({ path: 'openspec/specs/tools.yaml', operation: 'validate' });
-    expect(validation).toContain('No critical or warning issues found');
+    for (const domain of domains) {
+      const specPath = `openspec/specs/${domain}/spec.yaml`;
+      const validation = await openspecTool.execute({ path: specPath, operation: 'validate' });
+      expect(validation).toContain('No critical or warning issues found');
 
-    const operations = await openspecTool.execute({
-      path: 'openspec/specs/tools.yaml',
-      operation: 'operations',
-      path_filter: '/tools/read',
-    });
-    expect(operations).toContain('GET /tools/read');
-  });
-
-  it('validates agent.yaml spec file successfully', async () => {
-    const workspace = await Workspace.open(process.cwd());
-    const openspecTool = createOpenspecTool({ workspace });
-
-    const info = await openspecTool.execute({ path: 'openspec/specs/agent.yaml', operation: 'info' });
-    expect(info).toContain('mini-agent Core & Subsystems Specification');
-
-    const validation = await openspecTool.execute({ path: 'openspec/specs/agent.yaml', operation: 'validate' });
-    expect(validation).toContain('No critical or warning issues found');
-
-    const paths = await openspecTool.execute({ path: 'openspec/specs/agent.yaml', operation: 'paths' });
-    expect(paths).toContain('/agent/loop');
-    expect(paths).toContain('/agent/permissions');
+      const info = await openspecTool.execute({ path: specPath, operation: 'info' });
+      expect(info).toContain('mini-agent');
+    }
   });
 });

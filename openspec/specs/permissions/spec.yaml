@@ -1,0 +1,12 @@
+openapi: 3.0.0
+info:
+  title: mini-agent Permissions Domain OpenSpec
+  version: 0.1.15
+  description: OpenAPI 3.0 specification for permission evaluation and rule storage.
+paths:
+  /permissions/evaluate:
+    post:
+      summary: Evaluate permission rule
+      responses:
+        '200':
+          description: Evaluation decision (ALLOW or DENY).
