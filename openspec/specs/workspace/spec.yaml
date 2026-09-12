@@ -1,0 +1,12 @@
+openapi: 3.0.0
+info:
+  title: mini-agent Workspace Domain OpenSpec
+  version: 0.1.15
+  description: Specification for workspace path containment and resolution.
+paths:
+  /workspace/resolve:
+    post:
+      summary: Resolve workspace file path
+      responses:
+        '200':
+          description: Resolved absolute path within workspace root.

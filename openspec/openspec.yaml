@@ -1,0 +1,45 @@
+openapi: 3.0.0
+info:
+  title: mini-agent Specification
+  version: 0.1.15
+  description: OpenSpec OpenAPI 3.0 specification for mini-agent core components, agent loop, permissions, and tool definitions.
+paths:
+  /agent/run:
+    post:
+      summary: Execute agent task loop
+      description: Runs the agent loop with specified task, provider options, permission rules, and step limits.
+      responses:
+        '200':
+          description: Agent completed task successfully.
+        '400':
+          description: Invalid agent parameters or configuration error.
+        '500':
+          description: Agent step limit exceeded or runtime error.
+  /agent/config:
+    get:
+      summary: Load agent configuration
+      description: Retrieves merged agent options resolved from defaults, config file, env vars, and CLI arguments.
+      responses:
+        '200':
+          description: Resolved configuration object.
+  /agent/permissions:
+    post:
+      summary: Evaluate command/tool permission
+      description: Checks tool call safety and permission rules (deny > allow exact > allow mask).
+      responses:
+        '200':
+          description: Permission decision returned (allow/deny).
+  /agent/providers:
+    get:
+      summary: List registered LLM providers
+      description: Returns all available LLM providers (router, openai, anthropic, google).
+      responses:
+        '200':
+          description: List of registered provider definitions.
+  /tools/openspec:
+    post:
+      summary: Read and validate OpenAPI specs
+      description: Parses, validates, and extracts path and operation info from OpenSpec files.
+      responses:
+        '200':
+          description: Specification details or validation report.
