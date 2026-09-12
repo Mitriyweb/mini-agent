@@ -3,6 +3,10 @@ import type { Permissions } from './permissions.js';
 import type { Provider } from './llm.js';
 import type { Workspace } from '../agent/workspace.js';
 import type { Workflow, Skill } from '../agent/customizations.js';
+import type { LogLevel, LoggingConfig, Logger } from '../agent/logging.js';
+import type { CostTrackingConfig, UsageTracker, UsageSummary } from '../agent/usage-tracker.js';
+import type { SkillsConfig } from '../agent/skills.js';
+import type { SystemPromptConfig } from '../agent/system-prompt.js';
 
 export enum AgentResultStatus {
   OK = 'ok',
@@ -27,9 +31,19 @@ export interface AgentOptions {
   priorMessages?: ChatCompletionMessageParam[] | null;
   workflows?: Workflow[];
   skills?: Skill[];
+
+  // Configurable options
+  logging?: LoggingConfig | LogLevel;
+  costTracking?: CostTrackingConfig | boolean;
+  skillsConfig?: SkillsConfig;
+  systemPromptConfig?: SystemPromptConfig;
+  logger?: Logger;
+  usageTracker?: UsageTracker;
 }
 
 export interface AgentResult {
   text: string;
   messages: ChatCompletionMessageParam[];
+  usageSummary?: UsageSummary;
+  usageTracker?: UsageTracker;
 }

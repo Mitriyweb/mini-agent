@@ -1,0 +1,37 @@
+# mini-agent configuration example
+
+logging:
+  level: normal # off | normal | verbose
+
+cost_tracking:
+  enabled: false
+  currency: USD
+
+  # Optional default pricing for unknown models
+  pricing:
+    input_per_1m_tokens: 0
+    output_per_1m_tokens: 0
+
+  # Model-specific pricing overrides per 1 million tokens
+  models:
+    model-router-auto:
+      input_per_1m_tokens: 1.0
+      output_per_1m_tokens: 3.0
+    gpt-4o:
+      input_per_1m_tokens: 2.5
+      output_per_1m_tokens: 10.0
+    claude-3-5-sonnet-20241022:
+      input_per_1m_tokens: 3.0
+      output_per_1m_tokens: 15.0
+
+skills:
+  enabled: true
+  allow:
+    - git
+    - code-review
+  deny:
+    - dangerous-skill
+
+system_prompt:
+  enabled: true
+  path: "" # Optional custom system prompt path (e.g. "./prompts/custom-system.md")

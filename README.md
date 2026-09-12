@@ -11,38 +11,49 @@ A lightweight, modular coding agent harness supporting multi-provider LLMs (**Mo
   - **Direct Provider Mode**: Work directly with **OpenAI**, **Anthropic**, **Google Gemini**, or OpenAI-compatible endpoints bypassing `model-router`.
   - **Dynamic Model Discovery**: Fetches real available models directly from provider APIs.
 - **TypeScript & ESM**: Fully typed codebase targeting Node.js >= 20 and Bun.
-- **Modular Local Tools**: Includes file & workspace operations (`read`, `write`, `edit`, `patch`, `delete`, `glob`, `grep`, `bash`, `check`, `fetch`, `todo`).
-- **OpenAPI / OpenSpec Inspection**: Built-in `openspec` tool reads JSON/YAML specs, lists routes, and validates common OpenAPI structure issues.
-- **Workflows & Slash Commands**: Auto-discovers step-by-step procedures in `.agents/workflows/*.md` and supports `/workflow-name` slash commands in interactive and batch modes.
-- **Skills On-Demand**: Discovers capabilities in `.agents/skills/*/SKILL.md` with YAML frontmatter and exposes them directly to the agent's context.
-- **Interactive Provider & Model Switching**: Change provider or model on the fly during REPL sessions with `/provider` and `/model`.
-- **Safety & Containment**: Encapsulated `Workspace` class with lexical & realpath containment checks to prevent escaping the workspace directory. Granular permission system with `once`, `session`, and `always` scopes.
+- **Configurable Observability & Logging**:
+  - `off`: Complete quiet execution.
+  - `normal`: Standard workflow execution feedback.
+  - `verbose`: Detailed debugging including prompt metadata, request duration, token usage, and skill resolution, with safe secret redaction.
+- **Independent Token & Cost Accounting**:
+  - Collects token usage (input/prompt, output/completion, total).
+  - Configurable pricing per 1 million tokens (global default or per-model).
+  - Operates independently from logging level.
+- **Flexible Skill Controls**:
+  - Fine-grained controls with `enabled`, `allow`, and `deny` rules.
+  - `deny` rules take deterministic precedence over `allow` rules.
+- **System Prompt Management**:
+  - Toggle standard system prompts or load custom prompt files.
+  - Keeps custom instructions, skills, and workflows separate.
+- **Modular Local Tools**: Includes file & workspace operations (`read`, `write`, `edit`, `patch`, `delete`, `glob`, `grep`, `bash`, `check`, `fetch`, `todo`, `openspec`).
 
 ---
 
-## Quick Start
+## Quick Start Examples
 
-### 1. Run via Model Router (Default)
+### Standard Task Execution
 ```bash
-bun run start
-```
-By default, `mini-agent` connects to `http://localhost:8787/v1` using `model-router-auto`.
-
-### 2. Run Direct Provider Mode via CLI
-
-#### OpenAI Direct:
-```bash
-bun run start -- --provider openai --model gpt-4o "Refactor src/utils/git.ts"
+mini-agent "Fix the failing tests"
 ```
 
-#### Anthropic Direct:
+### Debug Execution
 ```bash
-bun run start -- --provider anthropic --model claude-3-5-sonnet-20241022 "Add unit tests"
+mini-agent --log-level verbose "Fix the failing tests"
 ```
 
-#### Google Gemini Direct:
+### Cost Accounting Mode
 ```bash
-bun run start -- --provider google --model gemini-1.5-flash "Fix lint issues"
+mini-agent --cost-tracking "Refactor authentication"
+```
+
+### Specific Skills Allowed
+```bash
+mini-agent --skills git,code-review "Review this PR"
+```
+
+### Skills Completely Disabled
+```bash
+mini-agent --no-skills "Analyze this code"
 ```
 
 ---
@@ -50,7 +61,7 @@ bun run start -- --provider google --model gemini-1.5-flash "Fix lint issues"
 ## Options & Flags
 
 ```bash
-bun run start -- [options] [task...]
+mini-agent [options] [task...]
 
 Options:
   -y, --auto-approve, --yes   Auto-approve tool execution without interactive prompt
@@ -59,26 +70,69 @@ Options:
   --model <model_id>          Override model ID (default: model-router-auto for router)
   --url <base_url>            Override API base URL (default: http://localhost:8787/v1)
   --max-steps <number>        Max execution steps (default: 30)
+  --log-level <level>         Set log level: off, normal, verbose (default: normal)
+  --cost-tracking             Enable LLM token usage & cost tracking
+  --no-cost-tracking          Disable LLM token usage & cost tracking
+  --no-skills                 Disable all skills loading and prompt injection
+  --skills <skill1,skill2>    Comma-separated list of allowed skills
+  --system-prompt             Enable standard built-in system prompt (default)
+  --no-system-prompt          Disable standard built-in system prompt
+  --config <path>             Path to configuration YAML/JSON file
   -v, --version               Show the installed version
   -h, --help                  Show this help text
 ```
 
 ---
 
-## REPL Commands
+## Configuration File & Precedence
 
-In interactive mode (`bun run start`), the following built-in commands are available:
+`mini-agent` automatically loads `mini-agent.config.yaml`, `mini-agent.config.json`, `.mini-agentrc.yaml`, or `.mini-agentrc.json` from the workspace root (or from an explicit path specified with `--config`).
 
-| Command | Description |
-|---|---|
-| `/provider [id]` | Show, select, or change LLM provider (`router`, `openai`, `anthropic`, `google`) |
-| `/model [model_id]` | Fetch available models from current provider and select active model |
-| `/help` | Show workflow, skill, provider, and command help |
-| `/workflows` | List available workflow shortcuts |
-| `/skills` | List available skills |
-| `/max-steps <number>` | Set maximum execution steps for new tasks |
-| `/auto-approve [on\|off]` | Toggle or set tool auto-approval |
-| `/exit`, `/quit` | Exit the interactive session |
+### Configuration Precedence Order
+Rules are evaluated in strict priority order (CLI arguments always take highest precedence):
+```
+defaults
+  ↓
+config file
+  ↓
+environment variables
+  ↓
+CLI arguments
+```
+
+### Configuration Example (`mini-agent.config.yaml`)
+```yaml
+logging:
+  level: normal # off | normal | verbose
+
+cost_tracking:
+  enabled: true
+  currency: USD
+
+  pricing:
+    input_per_1m_tokens: 0.0
+    output_per_1m_tokens: 0.0
+
+  models:
+    model-router-auto:
+      input_per_1m_tokens: 1.0
+      output_per_1m_tokens: 3.0
+    gpt-4o:
+      input_per_1m_tokens: 2.5
+      output_per_1m_tokens: 10.0
+
+skills:
+  enabled: true
+  allow:
+    - git
+    - code-review
+  deny:
+    - dangerous-skill
+
+system_prompt:
+  enabled: true
+  path: "" # Optional path to custom prompt markdown file
+```
 
 ---
 
@@ -86,36 +140,72 @@ In interactive mode (`bun run start`), the following built-in commands are avail
 
 | Variable | Default | Description |
 |---|---|---|
+| `LOG_LEVEL` / `MINI_AGENT_LOG_LEVEL` | `normal` | Logging verbosity (`off`, `normal`, `verbose`) |
+| `MINI_AGENT_COST_TRACKING` | `false` | Enable/disable cost tracking (`true`/`false`) |
+| `MINI_AGENT_SKILLS_ENABLED` | `true` | Enable/disable skills discovery (`true`/`false`) |
+| `MINI_AGENT_SYSTEM_PROMPT_ENABLED` | `true` | Enable/disable standard system prompt (`true`/`false`) |
 | `PROVIDER` | `router` | Default LLM provider (`router`, `openai`, `anthropic`, `google`) |
 | `MODEL` | `model-router-auto` | Default model ID |
 | `OPENAI_BASE_URL` | `http://localhost:8787/v1` | Base URL for OpenAI/Router |
 | `OPENAI_API_KEY` | `dummy` | API key for OpenAI / Model Router |
-| `ANTHROPIC_API_KEY` | (none) | API key for Anthropic direct mode |
-| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | (none) | API key for Google Gemini direct mode |
 | `AUTO_APPROVE` | `false` | Set to `true` to skip permission prompts |
 
 ---
 
-## Available Tools
+## Programmatic API Usage
 
-- `read`: Read file contents with offset and line limits.
-- `write`: Create or overwrite a file inside the workspace.
-- `edit`: Replace unique text fragments in a file (handles CRLF/LF line endings).
-- `patch`: Apply multiple hunk replacements to a file.
-- `delete`: Delete a file inside the workspace.
-- `glob`: Search files by wildcard/glob pattern. Empty patterns are treated as a workspace-wide match (`**`).
-- `grep`: Search file contents using regular expressions.
-- `bash`: Run shell commands in the workspace root.
-- `check`: Run syntax/type checks (`bun x tsc --noEmit` or `bun run check`).
-- `fetch`: Fetch HTTP/HTTPS web documents.
-- `todo`: Maintain structured task tracking lists.
-- `openspec`: Read and work with openspec (OpenAPI-style) specification files.
+Settings are fully available when creating or running agents programmatically:
+
+```ts
+import { runAgent, Workspace, createPermissions, createProvider } from 'mini-agent';
+
+const workspace = await Workspace.open(process.cwd());
+const provider = createProvider({ provider: 'openai', model: 'gpt-4o' });
+const permissions = createPermissions({ autoApprove: true }, workspace);
+
+const result = await runAgent({
+  task: 'Fix lint errors in src/',
+  provider,
+  permissions,
+  workspace,
+  logging: { level: 'verbose' },
+  costTracking: {
+    enabled: true,
+    currency: 'USD',
+    pricing: { input_per_1m_tokens: 2.5, output_per_1m_tokens: 10.0 },
+  },
+  skillsConfig: {
+    enabled: true,
+    allow: ['git', 'code-review'],
+    deny: ['dangerous-skill'],
+  },
+  systemPromptConfig: {
+    enabled: true,
+  },
+});
+
+console.log(result.text);
+if (result.usageSummary) {
+  console.log(`Total cost: $${result.usageSummary.estimatedCost}`);
+}
+```
 
 ---
 
-## Permissions & Safety
+## REPL Commands
 
-`mini-agent` features a multi-level permission gate to control command execution safety (especially for `bash` operations). Rules are evaluated in deterministic order: `deny > allow exact > allow mask`.
+In interactive mode (`mini-agent`), the following built-in commands are available:
+
+| Command | Description |
+|---|---|
+| `/provider [id]` | Show, select, or change LLM provider |
+| `/model [model_id]` | Fetch available models and select active model |
+| `/help` | Show workflow, skill, provider, and command help |
+| `/workflows` | List available workflow shortcuts |
+| `/skills` | List active skills |
+| `/max-steps <number>` | Set maximum execution steps for new tasks |
+| `/auto-approve [on\|off]` | Toggle tool approval prompts |
+| `/exit`, `/quit` | Exit the interactive session |
 
 ---
 
