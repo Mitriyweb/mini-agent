@@ -550,7 +550,47 @@
       simulateTask(command);
     };
 
+    const handleTabCompletion = () => {
+      const current = input.value;
+      const trimmed = current.trimStart();
+      if (!trimmed) return;
+
+      const candidates = Array.from(new Set([
+        ...Object.keys(slashCommands),
+        ...Object.keys(shellCommands)
+      ])).filter((cmd) => cmd.toLowerCase().startsWith(trimmed.toLowerCase()));
+
+      if (candidates.length === 0) return;
+
+      if (candidates.length === 1) {
+        input.value = candidates[0];
+        return;
+      }
+
+      let lcp = candidates[0];
+      for (let i = 1; i < candidates.length; i++) {
+        const cand = candidates[i];
+        let j = 0;
+        while (j < lcp.length && j < cand.length && lcp[j].toLowerCase() === cand[j].toLowerCase()) {
+          j++;
+        }
+        lcp = lcp.slice(0, j);
+      }
+
+      if (lcp.length > trimmed.length) {
+        input.value = lcp;
+      } else {
+        appendHTML(`<span class="prompt-symbol">›</span> <span class="user-cmd">${current}</span>`);
+        append(`Completions: ${candidates.join('   ')}`, 'muted');
+      }
+    };
+
     input.addEventListener('keydown', (event) => {
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        handleTabCompletion();
+        return;
+      }
       if (event.key !== 'Enter') return;
       const value = input.value;
       handleCommand(value);
