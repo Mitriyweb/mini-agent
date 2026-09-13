@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
-import { redactSecrets } from './logging.ts';
+import { redactSecrets, AuditLogger } from './logging.ts';
 import type { UsageSummary } from './usage-tracker.ts';
 import type { QualityGateResult } from './quality-gates.ts';
 
@@ -63,6 +63,7 @@ export class DurableRun {
     };
     fs.mkdirSync(directory, { recursive: true });
     const run = new DurableRun(directory, state);
+    new AuditLogger(workspace).logEvent(id, 'run_start', { task });
     run.writeState();
     run.appendEvent('created', { task: state.task, workspace: state.workspace });
     return run;
@@ -101,6 +102,7 @@ export class DurableRun {
   public resume(): void {
     this.state.status = 'running';
     delete this.state.error;
+    new AuditLogger(this.state.workspace).logEvent(this.state.id, 'run_resume', { task: this.state.task });
     this.persist('resumed');
   }
 
@@ -126,6 +128,7 @@ export class DurableRun {
     this.state.messages = safe(messages);
     this.state.qualityGateResults = safe(metadata.qualityGateResults);
     this.state.usageSummary = safe(metadata.usageSummary);
+    new AuditLogger(this.state.workspace).logEvent(this.state.id, 'run_complete', metadata);
     this.persist('completed');
   }
 
@@ -135,12 +138,14 @@ export class DurableRun {
     this.state.messages = safe(messages);
     this.state.qualityGateResults = safe(metadata.qualityGateResults);
     this.state.usageSummary = safe(metadata.usageSummary);
+    new AuditLogger(this.state.workspace).logEvent(this.state.id, 'run_fail', { error: this.state.error, ...metadata });
     this.persist('failed', { error: this.state.error });
   }
 
   public interrupt(): void {
     if (this.state.status !== 'running') return;
     this.state.status = 'interrupted';
+    new AuditLogger(this.state.workspace).logEvent(this.state.id, 'run_interrupt', {});
     this.persist('interrupted');
   }
 

@@ -6,6 +6,7 @@ config.js
 .env
 .*.bun
 .*.bun-build
-.mini-agent/permissions.json
+permissions.json
 mini-agent.log
 openspec/changes/*
+audit.jsonl

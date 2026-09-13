@@ -133,3 +133,46 @@ export class Logger {
     this.writer(text);
   }
 }
+
+export interface AuditEvent {
+  timestamp: string;
+  runId: string;
+  event: string;
+  [key: string]: unknown;
+}
+
+export class AuditLogger {
+  private filePath?: string;
+
+  constructor(workspacePath?: string) {
+    if (workspacePath) {
+      this.filePath = path.join(workspacePath, '.mini-agent', 'audit.jsonl');
+      try {
+        const dirPath = path.dirname(this.filePath);
+        fs.mkdirSync(dirPath, { recursive: true });
+        fs.closeSync(fs.openSync(this.filePath, 'a'));
+      } catch (err) {
+        // Best-effort: ignore if we cannot create the audit file
+        this.filePath = undefined;
+      }
+    }
+  }
+
+  public logEvent(runId: string, event: string, metadata?: Record<string, unknown>): void {
+    if (!this.filePath) return;
+
+    try {
+      const redactedMeta = metadata ? redactSecrets(metadata) as Record<string, unknown> : {};
+      const record: AuditEvent = {
+        timestamp: new Date().toISOString(),
+        runId,
+        event,
+        ...redactedMeta,
+      };
+
+      fs.appendFileSync(this.filePath, `${JSON.stringify(record)}\n`, 'utf8');
+    } catch (err) {
+      // Best-effort: non-fatal audit failures
+    }
+  }
+}

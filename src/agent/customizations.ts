@@ -211,7 +211,7 @@ export const resolveSlashCommand = (
   const trimmed = input.trim();
   if (!trimmed.startsWith('/')) return null;
 
-  const match = trimmed.match(/^\/([a-zA-Z0-9_-]+)(?:\s+([\s\S]*))?$/);
+  const match = trimmed.match(/^\/([a-zA-Z0-9_-]+)(?:\s*([\s\S]*))?$/);
   if (!match) return null;
 
   const commandName = match[1];

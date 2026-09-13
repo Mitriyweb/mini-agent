@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { INSTRUCTIONS } from './instructions.ts';
 import { formatCustomizationsPrompt } from './customizations.ts';
@@ -17,7 +18,7 @@ import { createWriteTool } from '../tools/write.ts';
 import { ToolRegistry } from '../tools/registry.ts';
 import { AgentResultStatus, type AgentEvent, type AgentOptions, type AgentResult } from '../types/agent.ts';
 import type { ToolEnvironment } from '../types/tools.ts';
-import { Logger, type LogLevel, type LoggingConfig } from './logging.ts';
+import { Logger, type LogLevel, type LoggingConfig, AuditLogger } from './logging.ts';
 import { UsageTracker, type CostTrackingConfig } from './usage-tracker.ts';
 import { filterSkills } from './skills.ts';
 import { resolveSystemPrompt } from './system-prompt.ts';
@@ -198,7 +199,17 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
 
   logger.logVerbose('Effective System Instructions:', effectiveInstructions);
 
+  const runId = durableRun?.state.id ?? randomUUID();
+  const auditLogger = new AuditLogger(workspace.root);
+
   const emit = async (type: AgentEvent['type'], data = {}) => {
+    if (type === 'tool') {
+      auditLogger.logEvent(runId, 'tool_call', data);
+    } else if (type === 'result') {
+      auditLogger.logEvent(runId, 'tool_result', data);
+    } else if (type === 'quality-gates') {
+      auditLogger.logEvent(runId, 'gate_execution', data);
+    }
     await onEvent?.({ type, ...data } as AgentEvent);
   };
 
