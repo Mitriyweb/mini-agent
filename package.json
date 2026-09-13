@@ -1,6 +1,6 @@
 {
   "name": "mini-agent",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "private": true,
   "description": "A small modular coding agent harness compatible with model-router.",
   "type": "module",
