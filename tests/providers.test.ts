@@ -14,11 +14,13 @@ describe('LLM Providers & Registry Test Suite', () => {
     expect(providerIds).toContain('openai');
     expect(providerIds).toContain('anthropic');
     expect(providerIds).toContain('google');
+    expect(providerIds).toContain('zai');
 
     expect(registry.has('router')).toBe(true);
     expect(registry.has('OPENAI')).toBe(true);
     expect(registry.has('anthropic')).toBe(true);
     expect(registry.has('google')).toBe(true);
+    expect(registry.has('zai')).toBe(true);
   });
 
   test('Router Mode creates default client targeting http://localhost:8787/v1', () => {
@@ -69,6 +71,17 @@ describe('LLM Providers & Registry Test Suite', () => {
     expect(provider.baseURL).toBe('https://generativelanguage.googleapis.com/v1beta/openai');
     expect(provider.model).toBe('gemini-1.5-flash');
     expect(provider.apiKey).toBe('test-google-key');
+  });
+
+  test('Direct Z.AI Mode targets Z.AI OpenAI-compatible base URL and default model', () => {
+    const provider = createProvider({
+      provider: 'zai',
+      apiKey: 'test-zai-key',
+    });
+    expect(provider.providerId).toBe('zai');
+    expect(provider.baseURL).toBe('https://api.z.ai/api/coding/paas/v4');
+    expect(provider.model).toBe('glm-5.3-highspeed');
+    expect(provider.apiKey).toBe('test-zai-key');
   });
 
   test('Missing API Key throws clear error for direct providers', () => {
@@ -165,6 +178,15 @@ describe('LLM Providers & Registry Test Suite', () => {
     });
     expect(currentProvider.providerId).toBe('anthropic');
     expect(currentProvider.model).toBe('claude-3-5-sonnet-20241022');
+
+    // Switch anthropic -> zai
+    currentProvider = createProvider({
+      provider: 'zai',
+      apiKey: 'test-zai-key',
+      model: 'glm-5.3-highspeed',
+    });
+    expect(currentProvider.providerId).toBe('zai');
+    expect(currentProvider.model).toBe('glm-5.3-highspeed');
 
     // Switch model A -> model B
     currentProvider = createProvider({

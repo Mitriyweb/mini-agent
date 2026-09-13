@@ -8,7 +8,7 @@ A lightweight, modular coding agent harness supporting multi-provider LLMs (**Mo
 
 - **Multi-Provider Architecture**:
   - **Model Router** (default: `http://localhost:8787/v1` with `model-router-auto`).
-  - **Direct Provider Mode**: Work directly with **OpenAI**, **Anthropic**, **Google Gemini**, or OpenAI-compatible endpoints bypassing `model-router`.
+  - **Direct Provider Mode**: Work directly with **OpenAI**, **Anthropic**, **Google Gemini**, **Z.AI**, or OpenAI-compatible endpoints bypassing `model-router`.
   - **Dynamic Model Discovery**: Fetches real available models directly from provider APIs.
 - **TypeScript & ESM**: Fully typed codebase targeting Node.js >= 20 and Bun.
 - **Configurable Observability & Logging**:
@@ -96,7 +96,7 @@ mini-agent resume [options] <run-id>
 Options:
   -y, --auto-approve, --yes   Auto-approve tool execution without interactive prompt
   --dir <path>                Set the project workspace directory
-  -p, --provider <id>         Override LLM provider (router, openai, anthropic, google)
+  -p, --provider <id>         Override LLM provider (router, openai, anthropic, google, zai)
   --model <model_id>          Override model ID (default: model-router-auto for router)
   --url <base_url>            Override API base URL (default: http://localhost:8787/v1)
   --max-steps <number>        Max execution steps (default: 30)
@@ -193,7 +193,10 @@ Each gate uses a kebab-case `id`, optional display `name`, `command`, `required`
 | `MINI_AGENT_COST_TRACKING` | `false` | Enable/disable cost tracking (`true`/`false`) |
 | `MINI_AGENT_SKILLS_ENABLED` | `true` | Enable/disable skills discovery (`true`/`false`) |
 | `MINI_AGENT_SYSTEM_PROMPT_ENABLED` | `true` | Enable/disable standard system prompt (`true`/`false`) |
-| `PROVIDER` | `router` | Default LLM provider (`router`, `openai`, `anthropic`, `google`) |
+| `PROVIDER` | `router` | Default LLM provider (`router`, `openai`, `anthropic`, `google`, `zai`) |
+| `ZAI_API_KEY` | | API key for Z.AI |
+| `ZAI_BASE_URL` | `https://api.z.ai/api/coding/paas/v4` | Base URL for Z.AI Chat Completions API |
+| `ZAI_MODEL` | `glm-5.3-highspeed` | Default model for Z.AI |
 | `MODEL` | `model-router-auto` | Default model ID |
 | `OPENAI_BASE_URL` | `http://localhost:8787/v1` | Base URL for OpenAI/Router |
 | `OPENAI_API_KEY` | `dummy` | API key for OpenAI / Model Router |
