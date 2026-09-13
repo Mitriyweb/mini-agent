@@ -97,64 +97,147 @@
     }
 
     .terminal {
-      margin-top: 18px;
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      background: #0e1610;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, .22);
+      margin-top: 24px;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      background: #0d1117;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6), 0 0 20px rgba(184, 243, 107, 0.04);
       overflow: hidden;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
     }
 
     .terminal-header {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 12px 16px;
-      background: var(--panel-strong);
-      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      background: #161b22;
+      border-bottom: 1px solid #21262d;
+      user-select: none;
     }
 
     .dot {
-      width: 10px;
-      height: 10px;
+      width: 12px;
+      height: 12px;
       border-radius: 50%;
       display: inline-block;
     }
 
-    .dot.red { background: #ff5f57; }
+    .dot.red { background: #ff5f56; }
     .dot.yellow { background: #ffbd2e; }
-    .dot.green { background: #28c840; }
+    .dot.green { background: #27c93f; }
+
+    .terminal-title {
+      margin-left: 10px;
+      color: #8b949e;
+      font-size: 0.8rem;
+      letter-spacing: 0.04em;
+      font-weight: 500;
+    }
 
     .terminal-body {
-      min-height: 280px;
-      padding: 16px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      font-size: 0.95rem;
-      line-height: 1.5;
-      color: var(--green-soft);
-      background: #0d130f;
+      min-height: 410px;
+      max-height: 540px;
+      overflow-y: auto;
+      padding: 18px 22px;
+      font-size: 0.93rem;
+      line-height: 1.6;
+      color: #c9d1d9;
+      background: #0d1117;
+    }
+
+    .box-card {
+      color: #8b949e;
+      line-height: 1.45;
+      margin-bottom: 16px;
+      font-family: inherit;
+      white-space: pre;
+    }
+
+    .box-card .border { color: #30363d; }
+    .box-card .header { color: #f0f6fc; font-weight: 600; }
+    .box-card .icon { color: var(--green); }
+    .box-card .key { color: #8b949e; }
+    .box-card .val { color: #58a6ff; }
+    .box-card .hint { color: #6e7681; }
+
+    .help-section {
+      margin: 14px 0 18px;
+      color: #8b949e;
+    }
+
+    .help-title {
+      color: #8b949e;
+      margin-bottom: 10px;
+      padding-left: 2px;
+    }
+
+    .help-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 5px;
+      padding-left: 10px;
+    }
+
+    .help-cmd {
+      color: var(--green);
+      min-width: 130px;
+      font-weight: 500;
+    }
+
+    .help-desc {
+      color: #8b949e;
     }
 
     .line {
       white-space: pre-wrap;
       word-break: break-word;
+      margin-bottom: 3px;
     }
 
-    .prompt { color: var(--prompt); }
+    .prompt-symbol {
+      color: var(--green);
+      font-weight: 700;
+      margin-right: 8px;
+    }
+
+    .user-cmd {
+      color: #f0f6fc;
+      font-weight: 600;
+    }
+
+    .step-header {
+      color: #d2a8ff;
+      font-weight: 600;
+      margin-top: 6px;
+    }
+
+    .step-bullet {
+      color: #79c0ff;
+      padding-left: 12px;
+    }
+
     .success { color: var(--green); }
-    .muted { color: var(--dim); }
+    .muted { color: #8b949e; }
+    .dim { color: #484f58; }
+
+    .terminal-footer {
+      background: #0d1117;
+      border-top: 1px solid #21262d;
+      padding: 8px 20px 12px;
+    }
 
     .terminal-input {
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 0 16px 16px;
-      background: #0d130f;
-      border-top: 1px solid var(--border);
+      gap: 8px;
+      position: relative;
     }
 
-    .terminal-input .prompt {
-      font-weight: 700;
+    .terminal-input .prompt-symbol {
+      color: var(--green);
+      font-size: 1.15rem;
+      line-height: 1;
     }
 
     .terminal-input input {
@@ -162,9 +245,30 @@
       background: transparent;
       border: 0;
       outline: none;
-      color: var(--text);
+      color: #f0f6fc;
       font: inherit;
-      padding: 14px 0;
+      padding: 8px 0;
+      font-size: 0.95rem;
+      caret-color: var(--green);
+    }
+
+    .terminal-input input::placeholder {
+      color: #484f58;
+    }
+
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 6px;
+      margin-top: 4px;
+      font-size: 0.78rem;
+      color: #6e7681;
+      border-top: 1px dashed #21262d;
+    }
+
+    .status-bar .shortcuts {
+      color: #8b949e;
     }
 
     nav {
@@ -211,11 +315,18 @@
         <span class="dot red"></span>
         <span class="dot yellow"></span>
         <span class="dot green"></span>
+        <span class="terminal-title">mini-agent cli</span>
       </div>
       <div class="terminal-body" id="terminal-output" aria-live="polite"></div>
-      <div class="terminal-input">
-        <span class="prompt">$</span>
-        <input id="terminal-input" type="text" spellcheck="false" aria-label="Terminal command input" placeholder="Type: help, start, ls, clear" />
+      <div class="terminal-footer">
+        <div class="terminal-input">
+          <span class="prompt-symbol">›</span>
+          <input id="terminal-input" type="text" spellcheck="false" aria-label="Terminal command input" placeholder="Describe a task or type /help..." />
+        </div>
+        <div class="status-bar">
+          <span>100% context left</span>
+          <span class="shortcuts">type ? or /help for commands</span>
+        </div>
       </div>
     </div>
 
@@ -230,6 +341,10 @@
     const output = document.getElementById('terminal-output');
     const input = document.getElementById('terminal-input');
 
+    let currentModel = 'gpt-4o';
+    let currentProvider = 'router';
+    let autoApprove = false;
+
     const append = (text, cls = '') => {
       const el = document.createElement('div');
       el.className = 'line ' + cls;
@@ -238,72 +353,201 @@
       output.scrollTop = output.scrollHeight;
     };
 
-    const commands = {
-      help: () => [
-        'mini-agent [options] [task...]',
-        '  -y, --auto-approve, --yes   Auto-approve tool execution',
-        '  --dir <path>                Set project workspace directory',
-        '  --model <model_id>          Override model ID',
-        '  --url <base_url>            Override API base URL',
-        '  --max-steps <number>        Max execution steps (default: 30)',
-        '  -v, --version               Show version',
-        '  -h, --help                  Show this help text',
-        '',
-        'REPL commands:',
-        '  /help                Show help',
-        '  /provider [id]       Select or change provider',
-        '  /model [model_id]    Select or change model',
-        '  /log-level [level]   Change session log level',
-        '  /cost-tracking [on|off|toggle]  Toggle cost tracking',
-        '  /system-prompt [on|off|toggle] Toggle system prompt',
-        '  /workflows           List workflows',
-        '  /skills              List skills',
-        '  /exit                Exit session',
-        '  /quit                Exit session',
-        '  /max-steps <number>  Set step limit',
-        '  /auto-approve [on|off|toggle] Toggle approval',
-        '',
-        'Examples:',
-        '  mini-agent "Add a small feature"',
-        '  mini-agent --dir ./src --max-steps 10 "Refactor a helper"',
-        '  mini-agent --auto-approve "Run without prompts"',
-        '  openspec path/to/spec.yaml info'
-      ],
-      ls: () => ['src/', 'tests/', 'README.md', 'docs/', 'package.json'],
-      pwd: () => ['/Users/you/projects/mini-agent'],
-      whoami: () => ['tooling-agent'],
-      clear: () => {
-        output.innerHTML = '';
-        return [];
-      },
-      start: () => [
-        'Starting mini-agent...',
-        '[Step 1/30] Planning the task...',
-        '[Step 2/30] Inspecting workspace...',
-        '[Step 3/30] Applying focused change...'
-      ],
-      run: () => ['mini-agent --dir ./src --max-steps 10 "Refactor a helper"'],
-      default: () => ['Command not found. Try: help, start, ls, pwd, clear']
+    const appendHTML = (html) => {
+      const el = document.createElement('div');
+      el.className = 'line';
+      el.innerHTML = html;
+      output.appendChild(el);
+      output.scrollTop = output.scrollHeight;
     };
 
-    append('Welcome to mini-agent', 'success');
-    append('Type "help" to see the available commands.', 'muted');
-    append('mini-agent@local:~$ help', '');
+    const renderCard = () => {
+      const html = `
+        <div class="box-card"><span class="border">╭──────────────────────────────────────────────────╮</span>
+<span class="border">│</span> <span class="icon">>_</span> <span class="header">mini-agent CLI</span> (v1.0.0)                       <span class="border">│</span>
+<span class="border">│</span>                                                  <span class="border">│</span>
+<span class="border">│</span> <span class="key">provider:</span>  <span class="val">${currentProvider.padEnd(12)}</span>                       <span class="border">│</span>
+<span class="border">│</span> <span class="key">model:</span>     <span class="val">${currentModel.padEnd(12)}</span> <span class="hint">/model to change</span>        <span class="border">│</span>
+<span class="border">│</span> <span class="key">directory:</span> <span class="val">~/code/mini-agent</span>                          <span class="border">│</span>
+<span class="border">╰──────────────────────────────────────────────────╯</span></div>
+        <div class="help-section">
+          <div class="help-title">To get started, describe a task or try one of these commands:</div>
+          <div class="help-row"><span class="help-cmd">/init</span><span class="help-desc">- create an AGENTS.md file with instructions for mini-agent</span></div>
+          <div class="help-row"><span class="help-cmd">/status</span><span class="help-desc">- show current session configuration</span></div>
+          <div class="help-row"><span class="help-cmd">/permissions</span><span class="help-desc">- choose what mini-agent is allowed to do</span></div>
+          <div class="help-row"><span class="help-cmd">/model</span><span class="help-desc">- choose what model to use</span></div>
+          <div class="help-row"><span class="help-cmd">/workflows</span><span class="help-desc">- list automated workflows</span></div>
+          <div class="help-row"><span class="help-cmd">/skills</span><span class="help-desc">- list available skills</span></div>
+        </div>
+      `;
+      appendHTML(html);
+    };
+
+    const slashCommands = {
+      '/init': () => [
+        'Creating AGENTS.md template for mini-agent...',
+        '✓ Created AGENTS.md with workspace safety boundaries and coding guidelines.'
+      ],
+      '/help': () => [
+        'Available slash commands:',
+        '  /init                         Create AGENTS.md instructions for mini-agent',
+        '  /status                       Show active session configuration',
+        '  /provider [router|openai|...] Select or change provider',
+        '  /model [model_id]             Select or change model',
+        '  /permissions                  View or modify permissions policy',
+        '  /auto-approve [on|off]        Toggle auto-approval for tool execution',
+        '  /workflows                    List agent workflows',
+        '  /skills                       List installed skills',
+        '  /clear                        Clear terminal output'
+      ],
+      '/?': () => slashCommands['/help'](),
+      '?': () => slashCommands['/help'](),
+      '/status': () => [
+        'Session Status:',
+        `  Provider:     ${currentProvider}`,
+        `  Model:        ${currentModel}`,
+        `  Directory:    ~/code/mini-agent`,
+        `  Auto Approve: ${autoApprove ? 'enabled' : 'disabled'}`,
+        '  Context:      100% remaining'
+      ],
+      '/model': (arg) => {
+        if (arg) {
+          currentModel = arg;
+          return `Active model changed to: ${currentModel}`;
+        }
+        return [
+          `Current model: ${currentModel}`,
+          'Available models:',
+          '  • gpt-4o (default)',
+          '  • gpt-4o-mini',
+          '  • claude-3-5-sonnet',
+          '  • gemini-2.5-pro',
+          'Usage: /model <model_id>'
+        ];
+      },
+      '/provider': (arg) => {
+        if (arg) {
+          currentProvider = arg;
+          return `Provider switched to: ${currentProvider}`;
+        }
+        return [
+          `Current provider: ${currentProvider}`,
+          'Available providers: router, openai, anthropic, google',
+          'Usage: /provider <id>'
+        ];
+      },
+      '/permissions': () => [
+        'Permission Policy:',
+        '  Mode: Workspace bounded (strict containment)',
+        `  Auto-approve tools: ${autoApprove ? 'ON' : 'OFF'}`,
+        '  Writable paths: ~/code/mini-agent'
+      ],
+      '/auto-approve': (arg) => {
+        if (arg === 'on' || arg === 'true') autoApprove = true;
+        else if (arg === 'off' || arg === 'false') autoApprove = false;
+        else autoApprove = !autoApprove;
+        return `Auto-approve set to: ${autoApprove ? 'ON' : 'OFF'}`;
+      },
+      '/workflows': () => [
+        'Available Workflows:',
+        '  • verify   - Run complete test, lint, and build verification',
+        '  • spec     - Inspect and validate OpenAPI / OpenSpec schemas',
+        '  • refactor - Automated codebase refactoring assistant'
+      ],
+      '/skills': () => [
+        'Loaded Skills:',
+        '  • filesystem - Read, write, and inspect project files',
+        '  • git        - Manage commits, diffs, and worktrees',
+        '  • openspec   - Parse and validate API specifications'
+      ],
+      '/clear': () => {
+        output.innerHTML = '';
+        return null;
+      }
+    };
+
+    const shellCommands = {
+      'ls': () => ['src/  tests/  docs/  openspec/  package.json  README.md  tsconfig.json'],
+      'pwd': () => ['/Users/you/code/mini-agent'],
+      'whoami': () => ['developer'],
+      'version': () => ['mini-agent v1.0.0'],
+      'cat package.json': () => [
+        '{',
+        '  "name": "mini-agent",',
+        '  "version": "1.0.0",',
+        '  "type": "module"',
+        '}'
+      ]
+    };
+
+    renderCard();
+
+    const simulateTask = (taskText) => {
+      appendHTML(`<span class="prompt-symbol">›</span> <span class="user-cmd">${taskText}</span>`);
+
+      setTimeout(() => {
+        append('[Step 1/4] Planning task execution...', 'step-header');
+      }, 300);
+
+      setTimeout(() => {
+        append('• Inspecting project tree and workspace state...', 'step-bullet');
+        append('• Reading package.json and configuration files...', 'step-bullet');
+      }, 700);
+
+      setTimeout(() => {
+        append('[Step 2/4] Executing tool calls...', 'step-header');
+        append('  $ check src/index.ts', 'muted');
+        append('  $ read_file filepath="README.md"', 'muted');
+      }, 1200);
+
+      setTimeout(() => {
+        append('[Step 3/4] Applying changes...', 'step-header');
+        append('  ✓ Successfully updated files in workspace', 'success');
+      }, 1700);
+
+      setTimeout(() => {
+        append('[Step 4/4] Verification & final review', 'step-header');
+        append('Task completed successfully. 100% context left.', 'success');
+      }, 2200);
+    };
 
     const handleCommand = (raw) => {
       const command = raw.trim();
       if (!command) return;
 
-      const [key, ...rest] = command.split(' ');
-      const fn = commands[key] || commands.default;
-      const result = fn(rest.join(' '));
-
-      append('$ ' + command, 'prompt');
-      if (Array.isArray(result) && result.length) {
-        result.forEach((line) => append(line));
-      } else if (result) {
-        append(result);
+      if (command === 'clear' || command === '/clear') {
+        slashCommands['/clear']();
+        return;
       }
+
+      if (shellCommands[command]) {
+        appendHTML(`<span class="prompt-symbol">›</span> <span class="user-cmd">${command}</span>`);
+        shellCommands[command]().forEach((line) => append(line, 'muted'));
+        return;
+      }
+
+      if (command.startsWith('/') || command === '?' || command === 'help') {
+        const parts = command.split(' ');
+        const cmdKey = parts[0] === 'help' ? '/help' : parts[0];
+        const arg = parts.slice(1).join(' ');
+
+        appendHTML(`<span class="prompt-symbol">›</span> <span class="user-cmd">${command}</span>`);
+
+        const handler = slashCommands[cmdKey];
+        if (handler) {
+          const res = handler(arg);
+          if (Array.isArray(res)) {
+            res.forEach((l) => append(l, 'muted'));
+          } else if (typeof res === 'string') {
+            append(res, 'success');
+          }
+        } else {
+          append(`Unknown slash command "${command}". Type /help for available commands.`, 'muted');
+        }
+        return;
+      }
+
+      simulateTask(command);
     };
 
     input.addEventListener('keydown', (event) => {
