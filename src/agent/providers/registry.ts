@@ -2,6 +2,7 @@ import { routerProvider } from './router.ts';
 import { openaiProvider } from './openai.ts';
 import { anthropicProvider } from './anthropic.ts';
 import { googleProvider } from './google.ts';
+import { zaiProvider } from './zai.ts';
 import type { LLMProviderDefinition } from './types.ts';
 
 export class ProviderRegistry {
@@ -12,6 +13,7 @@ export class ProviderRegistry {
     this.register(openaiProvider);
     this.register(anthropicProvider);
     this.register(googleProvider);
+    this.register(zaiProvider);
   }
 
   register(provider: LLMProviderDefinition): void {
