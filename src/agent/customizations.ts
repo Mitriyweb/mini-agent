@@ -38,6 +38,23 @@ export interface WorkflowNoMatch {
   extraArgs: string;
 }
 
+export interface SkillResolveResult {
+  matched: true;
+  kind: 'skill';
+  skill: Skill;
+  extraArgs: string;
+  prompt: string;
+}
+
+export interface SlashCommandResolveResult {
+  matched: true;
+  kind: 'workflow' | 'skill';
+  workflow?: Workflow;
+  skill?: Skill;
+  extraArgs: string;
+  prompt: string;
+}
+
 export const parseFrontmatter = (content: string): FrontmatterResult => {
   if (typeof content !== 'string') return { metadata: {}, body: '' };
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
@@ -185,10 +202,11 @@ export const formatCustomizationsPrompt = ({
   return `\n\n# Customizations\n\n${sections.join('\n\n')}`;
 };
 
-export const resolveWorkflowCommand = (
+export const resolveSlashCommand = (
   input: string,
   workflows: Workflow[] = [],
-): WorkflowResolveResult | WorkflowNoMatch | null => {
+  skills: Skill[] = [],
+): SlashCommandResolveResult | WorkflowNoMatch | null => {
   if (typeof input !== 'string') return null;
   const trimmed = input.trim();
   if (!trimmed.startsWith('/')) return null;
@@ -200,11 +218,38 @@ export const resolveWorkflowCommand = (
   const extraArgs = match[2]?.trim() || '';
 
   const workflow = workflows.find((wf) => wf.name.toLowerCase() === commandName.toLowerCase());
-  if (!workflow) {
-    return { matched: false, commandName, extraArgs };
+  if (workflow) {
+    const prompt = extraArgs ? `${workflow.content}\n\n---\nUser context/input: ${extraArgs}` : workflow.content;
+    return { matched: true, kind: 'workflow', workflow, extraArgs, prompt };
   }
 
-  const prompt = extraArgs ? `${workflow.content}\n\n---\nUser context/input: ${extraArgs}` : workflow.content;
+  const skill = skills.find((s) => s.name.toLowerCase() === commandName.toLowerCase());
+  if (skill) {
+    const prompt = extraArgs ? `${skill.content}\n\n---\nUser context/input: ${extraArgs}` : skill.content;
+    return { matched: true, kind: 'skill', skill, extraArgs, prompt };
+  }
 
-  return { matched: true, workflow, extraArgs, prompt };
+  return { matched: false, commandName, extraArgs };
+};
+
+export const resolveWorkflowCommand = (
+  input: string,
+  workflows: Workflow[] = [],
+): WorkflowResolveResult | WorkflowNoMatch | null => {
+  const resolved = resolveSlashCommand(input, workflows);
+
+  if (!resolved || !resolved.matched) {
+    return resolved ?? null;
+  }
+
+  if (resolved.kind !== 'workflow' || !resolved.workflow) {
+    return { matched: false, commandName: input.trim().slice(1).split(/\s+/)[0] ?? '', extraArgs: '' };
+  }
+
+  return {
+    matched: true,
+    workflow: resolved.workflow,
+    extraArgs: resolved.extraArgs,
+    prompt: resolved.prompt,
+  };
 };

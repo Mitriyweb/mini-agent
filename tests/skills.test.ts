@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { filterSkills } from '../src/agent/skills.js';
-import type { Skill } from '../src/agent/customizations.js';
+import { resolveSlashCommand, type Skill } from '../src/agent/customizations.js';
 import { parseArgs } from '../src/start.js';
 import { resolveAgentConfig } from '../src/agent/config.js';
 
@@ -59,5 +59,13 @@ describe('Skills Management Test Suite', () => {
 
     expect(config.skills.enabled).toBe(true);
     expect(config.skills.allow).toEqual(['git', 'code-review']);
+  });
+
+  it('resolves skills as slash commands', () => {
+    const result = resolveSlashCommand('/git', [], dummySkills);
+
+    expect(result?.matched).toBe(true);
+    expect(result?.prompt).toContain('git content');
+    expect(result?.skill?.name).toBe('git');
   });
 });

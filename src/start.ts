@@ -6,7 +6,7 @@ import concolor from 'concolor';
 
 import { errorText, runAgent } from './agent/agent.ts';
 import { createCompleter } from './agent/completer.ts';
-import { loadWorkflows, loadSkills, resolveWorkflowCommand } from './agent/customizations.ts';
+import { loadWorkflows, loadSkills, resolveSlashCommand } from './agent/customizations.ts';
 import { createProvider } from './agent/llm.ts';
 import { createPermissions } from './agent/permissions.ts';
 import { promptSelectModel, promptSelectProvider } from './agent/provider-cli.ts';
@@ -406,11 +406,12 @@ export const main = async () => {
   const onEvent = createEventHandler(logger);
 
   if (options.task) {
-    const resolvedWf = resolveWorkflowCommand(options.task, workflows);
-    const taskText = resolvedWf?.matched ? resolvedWf.prompt : options.task;
+    const resolvedCommand = resolveSlashCommand(options.task, workflows, filteredSkills);
+    const taskText = resolvedCommand?.matched ? resolvedCommand.prompt : options.task;
     if (!logger.isOff()) {
-      if (resolvedWf?.matched) {
-        console.log(color.cyan(`Workflow: ${resolvedWf.workflow.command} (${resolvedWf.workflow.name})\n`));
+      if (resolvedCommand?.matched) {
+        const commandLabel = resolvedCommand.kind === 'workflow' ? `${resolvedCommand.workflow?.command} (${resolvedCommand.workflow?.name})` : `${resolvedCommand.skill?.name}`;
+        console.log(color.cyan(`Command: ${commandLabel}\n`));
       } else {
         console.log(color.cyan(`Task: ${options.task}\n`));
       }
@@ -679,10 +680,13 @@ export const main = async () => {
 
       let taskToRun = trimmed;
       if (trimmed.startsWith('/')) {
-        const resolvedWf = resolveWorkflowCommand(trimmed, workflows);
-        if (resolvedWf?.matched) {
-          console.log(color.cyan(`\n⚡ Running workflow: ${resolvedWf.workflow.command}\n`));
-          taskToRun = resolvedWf.prompt;
+        const resolvedCommand = resolveSlashCommand(trimmed, workflows, filteredSkills);
+        if (resolvedCommand?.matched) {
+          const commandLabel = resolvedCommand.kind === 'workflow'
+            ? `${resolvedCommand.workflow?.command}`
+            : `/${resolvedCommand.skill?.name}`;
+          console.log(color.cyan(`\n⚡ Running command: ${commandLabel}\n`));
+          taskToRun = resolvedCommand.prompt;
         } else {
           console.log(color.warn(`Unknown command: ${trimmed}. Type /workflows to list workflows.\n`));
           continue;
