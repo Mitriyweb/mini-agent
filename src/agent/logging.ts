@@ -44,7 +44,7 @@ export const redactSecrets = (data: unknown): unknown => {
         lowerKey.includes('authorization') ||
         lowerKey.includes('secret') ||
         lowerKey.includes('password') ||
-        lowerKey.includes('token')
+        (lowerKey.includes('token') && !/(^|_)(input|output|total)?tokens?$/.test(lowerKey) && !lowerKey.endsWith('tokens'))
       ) {
         redactedObj[key] = '***[REDACTED]***';
       } else {

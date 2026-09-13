@@ -2,6 +2,11 @@
 
 set -eu
 
+abort() {
+  printf 'Release aborted: %s\n' "$1" >&2
+  exit 1
+}
+
 bump_type="${1:-}"
 case "$bump_type" in
   major|minor|patch) ;;
@@ -11,10 +16,17 @@ case "$bump_type" in
     ;;
 esac
 
-command -v git >/dev/null 2>&1 || { printf 'git is required\n' >&2; exit 1; }
-command -v gh >/dev/null 2>&1 || { printf 'GitHub CLI (gh) is required\n' >&2; exit 1; }
+command -v git >/dev/null 2>&1 || abort 'git is required'
+command -v gh >/dev/null 2>&1 || abort 'GitHub CLI (gh) is required'
 
-git diff --cached --quiet || { printf 'Staged changes exist; commit or unstage them first\n' >&2; exit 1; }
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || abort 'this directory is not a git repository'
+
+if ! git diff --cached --quiet; then
+  printf 'Release aborted: staged changes detected. Commit or unstage them first.\n' >&2
+  printf 'Staged files:\n' >&2
+  git diff --cached --name-status >&2 || true
+  exit 1
+fi
 
 bun run bump:version -- "$bump_type"
 bun run verify

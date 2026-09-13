@@ -21,7 +21,7 @@ import { Logger, type LogLevel, type LoggingConfig } from './logging.ts';
 import { UsageTracker, type CostTrackingConfig } from './usage-tracker.ts';
 import { filterSkills } from './skills.ts';
 import { resolveSystemPrompt } from './system-prompt.ts';
-import { executeQualityGates, formatQualityGateResults, hasRequiredGateFailure } from './quality-gates.ts';
+import { executeQualityGates, formatQualityGateResults, hasRequiredGateFailure, type QualityGateResult } from './quality-gates.ts';
 
 const MAX_RESULT_CHARS = 60_000;
 const LOG_RESULT_CHARS = 4_000;
@@ -205,6 +205,7 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
   const messages = durableRun?.state.messages.length
     ? [...durableRun.state.messages]
     : initialMessages(task, effectiveInstructions, priorMessages);
+  let lastQualityGateResults: QualityGateResult[] | undefined;
   const registry = createBuiltInRegistry({ workspace });
   const toolContext: ToolCallContext = { permissions, emit, registry, logger };
 
@@ -257,6 +258,7 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
         workspace,
         permissions,
       });
+      lastQualityGateResults = qualityGateResults;
       if (qualityGateResults.length > 0) await emit('quality-gates', { results: qualityGateResults });
       if (hasRequiredGateFailure(qualityGateResults)) {
         messages.push({
@@ -265,7 +267,7 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
         });
         continue;
       }
-      durableRun?.complete(messages);
+      durableRun?.complete(messages, { qualityGateResults, usageSummary: usageTracker.getSummary() });
       return {
         text: finalText,
         messages,
@@ -289,7 +291,7 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
 
     throw new Error(`Agent exceeded the maximum of ${maxSteps} steps.`);
   } catch (error) {
-    durableRun?.fail(error, messages);
+    durableRun?.fail(error, messages, { qualityGateResults: lastQualityGateResults, usageSummary: usageTracker.getSummary() });
     throw error;
   }
 };

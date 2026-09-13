@@ -3,6 +3,8 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import { redactSecrets } from './logging.ts';
+import type { UsageSummary } from './usage-tracker.ts';
+import type { QualityGateResult } from './quality-gates.ts';
 
 export type RunStatus = 'running' | 'interrupted' | 'failed' | 'completed';
 
@@ -23,6 +25,8 @@ export interface RunState {
   lastEventPosition: number;
   messages: ChatCompletionMessageParam[];
   completedToolCalls: CompletedToolCall[];
+  qualityGateResults?: QualityGateResult[];
+  usageSummary?: UsageSummary;
   error?: string;
 }
 
@@ -117,16 +121,20 @@ export class DurableRun {
     return this.state.completedToolCalls.find((call) => call.id === id)?.output;
   }
 
-  public complete(messages: ChatCompletionMessageParam[]): void {
+  public complete(messages: ChatCompletionMessageParam[], metadata: { qualityGateResults?: QualityGateResult[]; usageSummary?: UsageSummary } = {}): void {
     this.state.status = 'completed';
     this.state.messages = safe(messages);
+    this.state.qualityGateResults = safe(metadata.qualityGateResults);
+    this.state.usageSummary = safe(metadata.usageSummary);
     this.persist('completed');
   }
 
-  public fail(error: unknown, messages: ChatCompletionMessageParam[]): void {
+  public fail(error: unknown, messages: ChatCompletionMessageParam[], metadata: { qualityGateResults?: QualityGateResult[]; usageSummary?: UsageSummary } = {}): void {
     this.state.status = 'failed';
     this.state.error = safe(error instanceof Error ? error.message : String(error));
     this.state.messages = safe(messages);
+    this.state.qualityGateResults = safe(metadata.qualityGateResults);
+    this.state.usageSummary = safe(metadata.usageSummary);
     this.persist('failed', { error: this.state.error });
   }
 
@@ -140,6 +148,59 @@ export class DurableRun {
     this.state.updatedAt = new Date().toISOString();
     this.writeState();
     this.appendEvent(type, data);
+    if (this.state.status !== 'running') this.writeReports();
+  }
+
+  private writeReports(): void {
+    try {
+      const result = safe({
+        version: 1,
+        runId: this.state.id,
+        status: this.state.status,
+        task: this.state.task,
+        workspace: this.state.workspace,
+        createdAt: this.state.createdAt,
+        updatedAt: this.state.updatedAt,
+        currentStep: this.state.currentStep,
+        completedToolSteps: this.state.completedToolCalls.map((call) => call.id),
+        filesChanged: [],
+        qualityGates: this.state.qualityGateResults ?? [],
+        usage: this.state.usageSummary ?? null,
+        error: this.state.error ?? null,
+      });
+      fs.writeFileSync(path.join(this.directory, 'result.json'), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+
+      const gateLines = this.state.qualityGateResults?.length
+        ? this.state.qualityGateResults.map((gate) => `- ${gate.required ? 'Required' : 'Optional'} **${gate.name}**: ${gate.status}${gate.reason ? ` (${gate.reason})` : ''}`)
+        : ['- No quality-gate results recorded.'];
+      const usage = this.state.usageSummary;
+      const usageLines = usage
+        ? [`- Requests: ${usage.requests}`, `- Tokens: ${usage.totalTokens}`, `- Estimated cost: ${usage.currency} ${usage.estimatedCost}`]
+        : ['- Usage data unavailable.'];
+      const report = [
+        '# Run Report',
+        '',
+        `- **Run ID:** ${this.state.id}`,
+        `- **Status:** ${this.state.status}`,
+        `- **Task:** ${this.state.task}`,
+        `- **Created:** ${this.state.createdAt}`,
+        `- **Updated:** ${this.state.updatedAt}`,
+        '',
+        '## Files Changed',
+        '- No file-change metadata recorded.',
+        '',
+        '## Quality Gates',
+        ...gateLines,
+        '',
+        '## Usage',
+        ...usageLines,
+        ...(this.state.error ? ['', '## Error', this.state.error] : []),
+        '',
+      ].join('\n');
+      fs.writeFileSync(path.join(this.directory, 'report.md'), `${safe(report)}\n`, 'utf8');
+    } catch {
+      // Reports are observability artifacts; never replace the run outcome.
+    }
   }
 
   private writeState(): void {
