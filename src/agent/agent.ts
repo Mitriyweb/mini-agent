@@ -21,6 +21,7 @@ import { Logger, type LogLevel, type LoggingConfig } from './logging.ts';
 import { UsageTracker, type CostTrackingConfig } from './usage-tracker.ts';
 import { filterSkills } from './skills.ts';
 import { resolveSystemPrompt } from './system-prompt.ts';
+import { executeQualityGates, formatQualityGateResults, hasRequiredGateFailure } from './quality-gates.ts';
 
 const MAX_RESULT_CHARS = 60_000;
 const LOG_RESULT_CHARS = 4_000;
@@ -251,12 +252,26 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
     if (calls.length === 0) {
       const finalText = text || EMPTY_REPLY;
       await emit('assistant', { text: finalText });
+      const qualityGateResults = await executeQualityGates({
+        config: options.qualityGates ?? { enabled: false, gates: [] },
+        workspace,
+        permissions,
+      });
+      if (qualityGateResults.length > 0) await emit('quality-gates', { results: qualityGateResults });
+      if (hasRequiredGateFailure(qualityGateResults)) {
+        messages.push({
+          role: 'user',
+          content: `Required quality gates failed. Do not report success until they pass:\n${formatQualityGateResults(qualityGateResults)}`,
+        });
+        continue;
+      }
       durableRun?.complete(messages);
       return {
         text: finalText,
         messages,
         usageSummary: usageTracker.getSummary(),
         usageTracker,
+        qualityGateResults,
       };
     }
     if (text) await emit('assistant', { text });

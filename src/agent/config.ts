@@ -5,6 +5,7 @@ import type { LogLevel, LoggingConfig } from './logging.ts';
 import type { CostTrackingConfig, ModelPricing } from './usage-tracker.ts';
 import type { SkillsConfig } from './skills.ts';
 import type { SystemPromptConfig } from './system-prompt.ts';
+import { normalizeQualityGatesConfig, type QualityGatesConfig } from './quality-gates.ts';
 
 export interface Config {
   PROVIDER?: string;
@@ -62,6 +63,8 @@ export interface FileConfigSchema {
   maxSteps?: number;
   auto_approve?: boolean;
   autoApprove?: boolean;
+  quality_gates?: unknown;
+  qualityGates?: unknown;
 }
 
 export interface PartialAgentConfig {
@@ -74,6 +77,7 @@ export interface PartialAgentConfig {
   baseURL?: string;
   maxSteps?: number;
   autoApprove?: boolean;
+  qualityGates?: QualityGatesConfig;
   configPath?: string;
 }
 
@@ -87,6 +91,7 @@ export interface AgentResolvedConfig {
   baseURL?: string;
   maxSteps?: number;
   autoApprove?: boolean;
+  qualityGates: QualityGatesConfig;
 }
 
 const CONFIG_FILE_NAMES = [
@@ -142,6 +147,7 @@ export const resolveAgentConfig = (
   const fileCost = fileConfig.cost_tracking ?? fileConfig.costTracking;
   const fileSkills = fileConfig.skills;
   const fileSysPrompt = fileConfig.system_prompt ?? fileConfig.systemPrompt;
+  const qualityGates = cliOverrides.qualityGates ?? normalizeQualityGatesConfig(fileConfig.quality_gates ?? fileConfig.qualityGates);
 
   // Environment variable overrides
   const envLogLevel = (process.env.MINI_AGENT_LOG_LEVEL || process.env.LOG_LEVEL) as LogLevel | undefined;
@@ -254,5 +260,6 @@ export const resolveAgentConfig = (
     baseURL,
     maxSteps,
     autoApprove,
+    qualityGates,
   };
 };

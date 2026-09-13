@@ -336,6 +336,13 @@ export const createEventHandler = (logger: Logger) => {
         logger.logNormal(color.success('\n🤖 Assistant:'));
         logger.logNormal(event.text);
         break;
+      case 'quality-gates':
+        logger.logNormal(color.info('\nQuality gates:'));
+        for (const result of event.results) {
+          const badge = result.status === 'passed' ? color.success('✔') : result.status === 'skipped' ? color.warn('–') : color.error('✖');
+          logger.logNormal(`${badge} ${result.required ? 'required' : 'optional'} ${result.name}: ${result.status}`);
+        }
+        break;
     }
   };
 };
@@ -476,6 +483,7 @@ export const main = async () => {
         logger,
         usageTracker,
         durableRun,
+        qualityGates: resolvedConfig.qualityGates,
       });
 
       if (!logger.isOff()) {
@@ -754,6 +762,7 @@ export const main = async () => {
           systemPromptConfig: resolvedConfig.systemPrompt,
           logger,
           usageTracker,
+          qualityGates: resolvedConfig.qualityGates,
         });
         priorMessages = result.messages;
 

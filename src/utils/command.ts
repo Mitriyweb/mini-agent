@@ -8,12 +8,35 @@ const execFileAsync = promisify(execFile);
 const COMMAND_TIMEOUT_MS = 30_000;
 const MAX_BUFFER = 1024 * 1024;
 
-const execOptions = (cwd: string) => ({
+const execOptions = (cwd: string, timeout = COMMAND_TIMEOUT_MS) => ({
   cwd,
-  timeout: COMMAND_TIMEOUT_MS,
+  timeout,
   maxBuffer: MAX_BUFFER,
   windowsHide: true,
 });
+
+export interface CommandResult {
+  exitCode: number | 'timeout' | 'error';
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+}
+
+export const runCommandDetailed = async (command: string, cwd: string, timeout?: number): Promise<CommandResult> => {
+  const startedAt = Date.now();
+  try {
+    const result = await execAsync(command, execOptions(cwd, timeout));
+    return { exitCode: 0, stdout: result.stdout ?? '', stderr: result.stderr ?? '', durationMs: Date.now() - startedAt };
+  } catch (error: any) {
+    const timedOut = error?.killed && error?.signal === 'SIGTERM';
+    return {
+      exitCode: timedOut ? 'timeout' : typeof error?.code === 'number' ? error.code : 'error',
+      stdout: error?.stdout ?? '',
+      stderr: error?.stderr ?? error?.message ?? '',
+      durationMs: Date.now() - startedAt,
+    };
+  }
+};
 
 const joinOutput = (lines: string[]): string => {
   const present = lines.filter((line) => line !== '');

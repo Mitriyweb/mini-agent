@@ -28,6 +28,9 @@ A lightweight, modular coding agent harness supporting multi-provider LLMs (**Mo
 - **Durable Runs**:
   - Start an explicit run with a stable ID and resumable checkpoint state.
   - Persist redacted state and append-only lifecycle events under `.mini-agent/runs/`.
+- **Quality Gates**:
+  - Run configured project checks through the normal shell permission flow.
+  - Block successful completion when a required check fails, while allowing optional checks to be skipped.
 - **Modular Local Tools**: Includes file & workspace operations (`read`, `write`, `edit`, `patch`, `delete`, `glob`, `grep`, `bash`, `check`, `fetch`, `todo`, `openspec`).
 
 ---
@@ -159,7 +162,26 @@ skills:
 system_prompt:
   enabled: true
   path: "" # Optional path to custom prompt markdown file
+
+quality_gates:
+  enabled: true
+  gates:
+    - id: test
+      name: Unit tests
+      command: bun test
+      required: true
+    - id: typecheck
+      command: bun x tsc --noEmit
+      required: true
+    - id: optional-report
+      required: false # A missing command is reported as skipped
 ```
+
+### Quality Gates
+
+Quality gates are disabled by default. Set `quality_gates.enabled: true` to run explicit `gates`, or omit `gates` to discover supported `test`, `check`, `build`, and `verify` scripts from `package.json`.
+
+Each gate uses a kebab-case `id`, optional display `name`, `command`, `required` flag, and optional `timeout_ms`. Results include status, exit code, stdout, stderr, and duration. A failed required gate is returned to the agent for remediation and prevents a successful completion until it passes.
 
 ---
 

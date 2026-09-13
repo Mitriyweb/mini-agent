@@ -8,6 +8,7 @@ import type { CostTrackingConfig, UsageTracker, UsageSummary } from '../agent/us
 import type { SkillsConfig } from '../agent/skills.ts';
 import type { SystemPromptConfig } from '../agent/system-prompt.ts';
 import type { DurableRun } from '../agent/run-state.ts';
+import type { QualityGateResult, QualityGatesConfig } from '../agent/quality-gates.ts';
 
 export enum AgentResultStatus {
   OK = 'ok',
@@ -19,7 +20,8 @@ export type AgentEvent =
   | { type: 'step'; step: number; maxSteps: number; model: string }
   | { type: 'tool'; name: string; args: unknown; argsText: string }
   | { type: 'result'; name: string; args: unknown; status: AgentResultStatus; preview: string }
-  | { type: 'assistant'; text: string };
+  | { type: 'assistant'; text: string }
+  | { type: 'quality-gates'; results: QualityGateResult[] };
 
 export interface AgentOptions {
   task: string;
@@ -41,6 +43,7 @@ export interface AgentOptions {
   logger?: Logger;
   usageTracker?: UsageTracker;
   durableRun?: DurableRun;
+  qualityGates?: QualityGatesConfig;
 }
 
 export interface AgentResult {
@@ -48,4 +51,5 @@ export interface AgentResult {
   messages: ChatCompletionMessageParam[];
   usageSummary?: UsageSummary;
   usageTracker?: UsageTracker;
+  qualityGateResults?: QualityGateResult[];
 }
