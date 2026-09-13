@@ -7,6 +7,7 @@ import type { LogLevel, LoggingConfig, Logger } from '../agent/logging.ts';
 import type { CostTrackingConfig, UsageTracker, UsageSummary } from '../agent/usage-tracker.ts';
 import type { SkillsConfig } from '../agent/skills.ts';
 import type { SystemPromptConfig } from '../agent/system-prompt.ts';
+import type { DurableRun } from '../agent/run-state.ts';
 
 export enum AgentResultStatus {
   OK = 'ok',
@@ -39,6 +40,7 @@ export interface AgentOptions {
   systemPromptConfig?: SystemPromptConfig;
   logger?: Logger;
   usageTracker?: UsageTracker;
+  durableRun?: DurableRun;
 }
 
 export interface AgentResult {

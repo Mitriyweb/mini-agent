@@ -150,6 +150,7 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
   const { task, provider, permissions, workspace } = options;
   const { maxSteps = 30, workflows = [], skills = [] } = options;
   const { onEvent, priorMessages } = options;
+  const durableRun = options.durableRun;
 
   // Initialize Logger
   const logger =
@@ -200,13 +201,18 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
     await onEvent?.({ type, ...data } as AgentEvent);
   };
 
-  const messages = initialMessages(task, effectiveInstructions, priorMessages);
+  const messages = durableRun?.state.messages.length
+    ? [...durableRun.state.messages]
+    : initialMessages(task, effectiveInstructions, priorMessages);
   const registry = createBuiltInRegistry({ workspace });
   const toolContext: ToolCallContext = { permissions, emit, registry, logger };
 
-  for (let step = 1; step <= maxSteps; step += 1) {
+  try {
+    const firstStep = durableRun?.state.messages.length ? durableRun.state.currentStep + 1 : 1;
+    for (let step = firstStep; step <= maxSteps; step += 1) {
     const model = provider.model;
     await emit('step', { step, maxSteps, model });
+    durableRun?.update(step, messages);
 
     const tools = registry.definitions();
 
@@ -245,6 +251,7 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
     if (calls.length === 0) {
       const finalText = text || EMPTY_REPLY;
       await emit('assistant', { text: finalText });
+      durableRun?.complete(messages);
       return {
         text: finalText,
         messages,
@@ -255,10 +262,19 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
     if (text) await emit('assistant', { text });
 
     for (const call of calls) {
-      const output = await runToolCall(call, toolContext);
+      const persistedOutput = durableRun?.completedToolOutput(call.id);
+      const output = persistedOutput === undefined
+        ? await runToolCall(call, toolContext)
+        : { role: 'tool' as const, content: persistedOutput, tool_call_id: call.id };
       messages.push(output);
+      if (persistedOutput === undefined) durableRun?.recordToolResult(call.id, output.content as string);
+      durableRun?.update(step, messages);
     }
-  }
+    }
 
-  throw new Error(`Agent exceeded the maximum of ${maxSteps} steps.`);
+    throw new Error(`Agent exceeded the maximum of ${maxSteps} steps.`);
+  } catch (error) {
+    durableRun?.fail(error, messages);
+    throw error;
+  }
 };

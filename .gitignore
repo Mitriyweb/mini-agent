@@ -8,3 +8,4 @@ config.js
 .*.bun-build
 .mini-agent/permissions.json
 mini-agent.log
+openspec/changes/*

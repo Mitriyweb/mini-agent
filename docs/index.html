@@ -291,7 +291,7 @@
   <main>
     <div class="tag">Open source coding agent</div>
     <h1>mini-agent</h1>
-    <p>A small modular CLI harness for model-router and other OpenAI-compatible Chat Completions APIs.</p>
+    <p>A small modular CLI harness for model-router and other OpenAI-compatible Chat Completions APIs, with resumable durable runs for longer tasks.</p>
 
     <pre class="install"><code>curl -fsSL https://raw.githubusercontent.com/Mitriyweb/mini-agent/main/install.sh | bash</code></pre>
 
@@ -307,6 +307,10 @@
       <div class="feature">
         <h3>Safe by default</h3>
         <p>Workspace-only file access, approval gates, and bounded step limits reduce accidental drift and runaway loops.</p>
+      </div>
+      <div class="feature">
+        <h3>Durable runs</h3>
+        <p>Start a named run, keep redacted checkpoints on disk, and resume interrupted or recoverable failed work without repeating completed tool calls.</p>
       </div>
     </div>
 

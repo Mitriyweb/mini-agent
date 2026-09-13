@@ -25,7 +25,22 @@ A lightweight, modular coding agent harness supporting multi-provider LLMs (**Mo
 - **System Prompt Management**:
   - Toggle standard system prompts or load custom prompt files.
   - Keeps custom instructions, skills, and workflows separate.
+- **Durable Runs**:
+  - Start an explicit run with a stable ID and resumable checkpoint state.
+  - Persist redacted state and append-only lifecycle events under `.mini-agent/runs/`.
 - **Modular Local Tools**: Includes file & workspace operations (`read`, `write`, `edit`, `patch`, `delete`, `glob`, `grep`, `bash`, `check`, `fetch`, `todo`, `openspec`).
+
+---
+
+## Installation
+
+Install the latest binary from the GitHub release assets:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Mitriyweb/mini-agent/main/install.sh | bash
+```
+
+This script downloads the matching `mini-agent` binary for your OS/architecture and installs it into `~/.local/bin` by default. Add `~/.local/bin` to your `PATH` if you want to run `mini-agent` directly from any shell.
 
 ---
 
@@ -35,6 +50,16 @@ A lightweight, modular coding agent harness supporting multi-provider LLMs (**Mo
 ```bash
 mini-agent "Fix the failing tests"
 ```
+
+### Durable Run and Resume
+```bash
+mini-agent run "Implement feature X"
+# Run ID: <run-id>
+
+mini-agent resume <run-id>
+```
+
+Explicit runs persist their redacted checkpoint state in `.mini-agent/runs/<run-id>/`. A resumed run restores the recorded conversation and skips tool calls that were already completed. Completed runs cannot be resumed.
 
 ### Debug Execution
 ```bash
@@ -62,6 +87,8 @@ mini-agent --no-skills "Analyze this code"
 
 ```bash
 mini-agent [options] [task...]
+mini-agent run [options] "task..."
+mini-agent resume [options] <run-id>
 
 Options:
   -y, --auto-approve, --yes   Auto-approve tool execution without interactive prompt

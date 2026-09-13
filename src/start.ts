@@ -17,6 +17,7 @@ import { resolveAgentConfig, type PartialAgentConfig } from './agent/config.ts';
 import { Logger, type LogLevel } from './agent/logging.ts';
 import { UsageTracker } from './agent/usage-tracker.ts';
 import { filterSkills } from './agent/skills.ts';
+import { DurableRun } from './agent/run-state.ts';
 import packageJson from '../package.json' with { type: 'json' };
 
 const color = (concolor as any)({
@@ -41,6 +42,8 @@ export interface ParsedCLIOptions {
   help: boolean;
   version: boolean;
   task: string;
+  command?: 'run' | 'resume';
+  runId?: string;
   logLevel?: LogLevel;
   costTracking?: boolean;
   skillsEnabled?: boolean;
@@ -56,6 +59,8 @@ mini-agent - Compact modular coding agent harness
 
 Usage:
   mini-agent [options] [task...]
+  mini-agent run [options] "task..."
+  mini-agent resume [options] <run-id>
 
 Quick examples:
   mini-agent "Add a small feature to the CLI"
@@ -188,6 +193,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       }
     }
 
+    const command = taskParts[0] === 'run' || taskParts[0] === 'resume' ? taskParts.shift() as 'run' | 'resume' : undefined;
+    const runId = command === 'resume' ? taskParts.shift() : undefined;
     return {
       autoApprove,
       workspaceDir,
@@ -198,6 +205,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       help,
       version,
       task: taskParts.join(' ').trim(),
+      command,
+      runId,
       logLevel,
       costTracking,
       skillsEnabled,
@@ -271,6 +280,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       }
     }
 
+    const command = taskParts[0] === 'run' || taskParts[0] === 'resume' ? taskParts.shift() as 'run' | 'resume' : undefined;
+    const runId = command === 'resume' ? taskParts.shift() : undefined;
     return {
       autoApprove,
       workspaceDir,
@@ -281,6 +292,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       help,
       version,
       task: taskParts.join(' ').trim(),
+      command,
+      runId,
       logLevel,
       costTracking,
       skillsEnabled,
@@ -384,7 +397,11 @@ export const main = async () => {
 
   let provider = createProvider(providerOptions);
   const permissions = createPermissions({ autoApprove: resolvedConfig.autoApprove }, workspace);
-  const removeInterruptHandler = installInterruptHandler(() => permissions.close());
+  let durableRun: DurableRun | undefined;
+  const removeInterruptHandler = installInterruptHandler(() => {
+    durableRun?.interrupt();
+    permissions.close();
+  });
 
   if (!logger.isOff()) {
     console.log(color.info('=================================================='));
@@ -405,9 +422,34 @@ export const main = async () => {
 
   const onEvent = createEventHandler(logger);
 
-  if (options.task) {
+  if (options.command === 'resume' && !options.runId) {
+    console.error(color.error('Usage: mini-agent resume <run-id>'));
+    removeInterruptHandler();
+    permissions.close();
+    process.exitCode = 1;
+    return;
+  }
+
+  if (options.task || options.command === 'resume') {
+    try {
+      if (options.command === 'run') {
+        if (!options.task) throw new Error('Usage: mini-agent run "task"');
+        durableRun = DurableRun.create(workspace.root, options.task);
+        console.log(color.cyan(`Run ID: ${durableRun.state.id}`));
+      } else if (options.command === 'resume') {
+        durableRun = DurableRun.load(workspace.root, options.runId!);
+        durableRun.resume();
+        console.log(color.cyan(`Resuming run: ${durableRun.state.id}`));
+      }
+    } catch (err) {
+      logger.logError('Run setup error', err);
+      removeInterruptHandler();
+      permissions.close();
+      process.exitCode = 1;
+      return;
+    }
     const resolvedCommand = resolveSlashCommand(options.task, workflows, filteredSkills);
-    const taskText = resolvedCommand?.matched ? resolvedCommand.prompt : options.task;
+    const taskText = durableRun?.state.task ?? (resolvedCommand?.matched ? resolvedCommand.prompt : options.task);
     if (!logger.isOff()) {
       if (resolvedCommand?.matched) {
         const commandLabel = resolvedCommand.kind === 'workflow' ? `${resolvedCommand.workflow?.command} (${resolvedCommand.workflow?.name})` : `${resolvedCommand.skill?.name}`;
@@ -433,6 +475,7 @@ export const main = async () => {
         systemPromptConfig: resolvedConfig.systemPrompt,
         logger,
         usageTracker,
+        durableRun,
       });
 
       if (!logger.isOff()) {

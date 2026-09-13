@@ -12,6 +12,7 @@ export * from './agent/permissions.ts';
 export * from './agent/workspace.ts';
 
 export * from './agent/logging.ts';
+export * from './agent/run-state.ts';
 export * from './agent/usage-tracker.ts';
 export * from './agent/skills.ts';
 export * from './agent/system-prompt.ts';
