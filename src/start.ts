@@ -18,6 +18,7 @@ import { Logger, type LogLevel } from './agent/logging.ts';
 import { UsageTracker } from './agent/usage-tracker.ts';
 import { filterSkills } from './agent/skills.ts';
 import { DurableRun } from './agent/run-state.ts';
+import { addMemoryEntry, loadProjectMemory, DEFAULT_MEMORY_PATH } from './agent/memory.ts';
 import packageJson from '../package.json' with { type: 'json' };
 
 const color = (concolor as any)({
@@ -32,6 +33,11 @@ const color = (concolor as any)({
 const DEFAULT_MAX_STEPS = 30;
 const VERSION = packageJson.version;
 
+export enum ParsedCommand {
+  Run = 'run',
+  Resume = 'resume',
+}
+
 export interface ParsedCLIOptions {
   autoApprove: boolean;
   workspaceDir: string;
@@ -42,7 +48,7 @@ export interface ParsedCLIOptions {
   help: boolean;
   version: boolean;
   task: string;
-  command?: 'run' | 'resume';
+  command?: ParsedCommand;
   runId?: string;
   logLevel?: LogLevel;
   costTracking?: boolean;
@@ -61,6 +67,8 @@ Usage:
   mini-agent [options] [task...]
   mini-agent run [options] "task..."
   mini-agent resume [options] <run-id>
+  mini-agent memory show
+  mini-agent memory add "new knowledge"
 
 Quick examples:
   mini-agent "Add a small feature to the CLI"
@@ -193,8 +201,10 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       }
     }
 
-    const command = taskParts[0] === 'run' || taskParts[0] === 'resume' ? taskParts.shift() as 'run' | 'resume' : undefined;
-    const runId = command === 'resume' ? taskParts.shift() : undefined;
+    const command = taskParts[0] === ParsedCommand.Run || taskParts[0] === ParsedCommand.Resume
+      ? taskParts.shift() as ParsedCommand
+      : undefined;
+    const runId = command === ParsedCommand.Resume ? taskParts.shift() : undefined;
     return {
       autoApprove,
       workspaceDir,
@@ -280,8 +290,10 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       }
     }
 
-    const command = taskParts[0] === 'run' || taskParts[0] === 'resume' ? taskParts.shift() as 'run' | 'resume' : undefined;
-    const runId = command === 'resume' ? taskParts.shift() : undefined;
+    const command = taskParts[0] === ParsedCommand.Run || taskParts[0] === ParsedCommand.Resume
+      ? taskParts.shift() as ParsedCommand
+      : undefined;
+    const runId = command === ParsedCommand.Resume ? taskParts.shift() : undefined;
     return {
       autoApprove,
       workspaceDir,
@@ -429,7 +441,7 @@ export const main = async () => {
 
   const onEvent = createEventHandler(logger);
 
-  if (options.command === 'resume' && !options.runId) {
+  if (options.command === ParsedCommand.Resume && !options.runId) {
     console.error(color.error('Usage: mini-agent resume <run-id>'));
     removeInterruptHandler();
     permissions.close();
@@ -437,13 +449,55 @@ export const main = async () => {
     return;
   }
 
-  if (options.task || options.command === 'resume') {
+  const memoryCommand = options.task.trim();
+  if (memoryCommand === 'memory' || memoryCommand.startsWith('memory ')) {
+    const remainder = memoryCommand === 'memory' ? '' : memoryCommand.slice('memory '.length).trim();
+    const subcommand = remainder === 'show' || remainder === '' ? 'show' : remainder.startsWith('add') ? 'add' : remainder;
+    const memoryArgs = subcommand === 'add' ? remainder.slice('add'.length).trim() : '';
+
+    if (subcommand === 'show') {
+      const memory = await loadProjectMemory(workspace.root);
+      if (!memory.trim()) {
+        console.log(color.info(`No memory found at ${DEFAULT_MEMORY_PATH}.`));
+      } else {
+        console.log(memory);
+      }
+      permissions.close();
+      removeInterruptHandler();
+      return;
+    }
+
+    if (subcommand === 'add') {
+      if (!memoryArgs) {
+        console.error(color.error('Usage: mini-agent memory add "text"'));
+        permissions.close();
+        removeInterruptHandler();
+        process.exitCode = 1;
+        return;
+      }
+
+      const result = await addMemoryEntry(workspace.root, memoryArgs);
+      console.log(color.success(`Memory updated at ${DEFAULT_MEMORY_PATH}`));
+      console.log(result.content);
+      permissions.close();
+      removeInterruptHandler();
+      return;
+    }
+
+    console.error(color.error('Usage: mini-agent memory show | mini-agent memory add "text"'));
+    permissions.close();
+    removeInterruptHandler();
+    process.exitCode = 1;
+    return;
+  }
+
+  if (options.task || options.command === ParsedCommand.Resume) {
     try {
-      if (options.command === 'run') {
+      if (options.command === ParsedCommand.Run) {
         if (!options.task) throw new Error('Usage: mini-agent run "task"');
         durableRun = DurableRun.create(workspace.root, options.task);
         console.log(color.cyan(`Run ID: ${durableRun.state.id}`));
-      } else if (options.command === 'resume') {
+      } else if (options.command === ParsedCommand.Resume) {
         durableRun = DurableRun.load(workspace.root, options.runId!);
         durableRun.resume();
         console.log(color.cyan(`Resuming run: ${durableRun.state.id}`));

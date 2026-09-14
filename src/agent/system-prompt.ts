@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { INSTRUCTIONS } from './instructions.ts';
+import { loadProjectMemory } from './memory.ts';
 
 export interface SystemPromptConfig {
   enabled: boolean;
@@ -25,5 +26,15 @@ export const resolveSystemPrompt = async (
     }
   }
 
-  return INSTRUCTIONS;
+  const basePrompt = INSTRUCTIONS;
+  if (!workspaceRoot) {
+    return basePrompt;
+  }
+
+  const memoryPrompt = await loadProjectMemory(workspaceRoot);
+  if (!memoryPrompt.trim()) {
+    return basePrompt;
+  }
+
+  return `${basePrompt}\n\n${memoryPrompt}`;
 };

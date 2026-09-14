@@ -14,16 +14,16 @@ git diff --name-only
 git diff --stat
 ```
 
-1. Identify all changed files (`.js`, `.json`, `.md`)
+1. Identify all changed files (`.ts`, `.json`, `.md`)
 2. Read full content of each changed file
 3. Categorize by type and verify specific rules:
-   - **Core Engine & Tools (`agent/*.js`, `tools/**/*.js`, `start.js`)**:
-     - Strict CommonJS: `'use strict'` at top of every module.
+   - **Core Engine & Tools (`src/agent/*.ts`, `src/tools/**/*.ts`, `src/start.ts`)**:
+     - TypeScript + ESM conventions: use `import`/`export`, prefer typed interfaces, and keep implementations in `src/`.
      - Use `node:` prefix for Node.js built-ins (`node:fs`, `node:path`, `node:readline/promises`, `node:assert`, `node:test`).
-     - Third-party dependencies kept minimal (`metautil`, `concolor`, `openai`). No heavy libraries.
+     - Third-party dependencies kept minimal (`concolor`, `openai`, `yaml`, etc.). No heavy libraries.
      - **Terminal / Readline discipline**: Never attach a second `readline.createInterface` to `process.stdin` if one is active. Always pass `rl` to `createPermissions({ rl })` to prevent double-keystroke echo.
      - **Path Containment & Security**: All file operations must respect `workspace.resolveExistingFile()` or `workspace.resolveNewFile()`. Tool execution must not escape `workspace.root` or `workspace.gitRoot` without explicit permission.
-     - **Tool Modules (`tools/<name>/`)**: Must export `definition`, `execute(args)`, `trust(args)`, and `describe(args)`.
+     - **Tool Modules (`src/tools/<name>/`)**: Must export `definition`, `execute(args)`, `trust(args)`, and `describe(args)`.
    - **Prompts (`prompts/*.md`)**:
      - System prompts must remain in `prompts/`, separated from executable code in `agent/`.
    - **Documentation & Configs (`AGENTS.md`, `CLAUDE.md`, `README.md`, `package.json`)**:
@@ -64,9 +64,9 @@ bun run verify
 This runs Biome lint, TypeScript typecheck, unit tests, and the production build
 in one command. It must exit with code `0` before proceeding.
 
-Optional syntax validation on modified files:
+Optional type validation on modified TypeScript files:
 ```bash
-node --check <modified-file.js>
+bun x tsc --noEmit
 ```
 
 ## Phase 2: Prepare Commit Message

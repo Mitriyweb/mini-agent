@@ -28,6 +28,9 @@ A lightweight, modular coding agent harness supporting multi-provider LLMs (**Mo
 - **Durable Runs**:
   - Start an explicit run with a stable ID and resumable checkpoint state.
   - Persist redacted state and append-only lifecycle events under `.mini-agent/runs/`.
+- **Persistent Project Memory**:
+  - Keep project-level notes across sessions in `.mini-agent/memory.md`.
+  - Add entries from the CLI or inspect accumulated knowledge with `mini-agent memory show`.
 - **Quality Gates**:
   - Run configured project checks through the normal shell permission flow.
   - Block successful completion when a required check fails, while allowing optional checks to be skipped.
@@ -64,6 +67,14 @@ mini-agent resume <run-id>
 
 Explicit runs persist their redacted checkpoint state in `.mini-agent/runs/<run-id>/`. A resumed run restores the recorded conversation and skips tool calls that were already completed. Completed runs cannot be resumed.
 
+### Persistent Project Memory
+```bash
+mini-agent memory show
+mini-agent memory add "Remember to preserve backward compatibility when updating the CLI"
+```
+
+Project memory is stored in `.mini-agent/memory.md` and is automatically included in the built-in system prompt so the agent can carry forward important context between sessions. Memory content is bounded to the latest entries and trimmed to fit the configured size limits.
+
 ### Debug Execution
 ```bash
 mini-agent --log-level verbose "Fix the failing tests"
@@ -92,6 +103,8 @@ mini-agent --no-skills "Analyze this code"
 mini-agent [options] [task...]
 mini-agent run [options] "task..."
 mini-agent resume [options] <run-id>
+mini-agent memory show
+mini-agent memory add "new knowledge"
 
 Options:
   -y, --auto-approve, --yes   Auto-approve tool execution without interactive prompt
