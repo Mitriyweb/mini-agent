@@ -14,6 +14,7 @@ import { defaultProviderRegistry } from './agent/providers/registry.ts';
 import { Workspace } from './agent/workspace.ts';
 import { AgentResultStatus, type AgentEvent } from './types/agent.ts';
 import { resolveAgentConfig, type PartialAgentConfig } from './agent/config.ts';
+import { validateProfileName } from './agent/profiles.ts';
 import { Logger, type LogLevel } from './agent/logging.ts';
 import { UsageTracker } from './agent/usage-tracker.ts';
 import { filterSkills } from './agent/skills.ts';
@@ -56,6 +57,8 @@ export interface ParsedCLIOptions {
   skillsAllow?: string[];
   systemPromptEnabled?: boolean;
   configPath?: string;
+  /** Selected agent profile name (e.g. planner, developer, reviewer, qa). */
+  profile?: string;
 }
 
 export const printHelp = () => {
@@ -93,6 +96,7 @@ Common options:
   --system-prompt             Enable standard built-in system prompt (default)
   --no-system-prompt          Disable standard built-in system prompt
   --config <path>             Path to configuration YAML/JSON file
+  --profile <name>            Apply a named role profile (default, planner, developer, reviewer, qa)
   -v, --version               Show the installed version
   -h, --help                  Show this help text
 
@@ -132,6 +136,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         'system-prompt': { type: 'boolean', default: undefined },
         'no-system-prompt': { type: 'boolean', default: false },
         config: { type: 'string' },
+        profile: { type: 'string' },
         version: { type: 'boolean', short: 'v', default: false },
         help: { type: 'boolean', short: 'h', default: false },
       },
@@ -182,6 +187,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     }
 
     const configPath = parsed.values.config as string | undefined;
+    const profile = (parsed.values as Record<string, unknown>).profile as string | undefined;
 
     let workspaceDir = (parsed.values.dir as string | undefined) || process.cwd();
     const positionals = parsed.positionals;
@@ -223,6 +229,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       skillsAllow,
       systemPromptEnabled,
       configPath,
+      profile,
     };
   } catch {
     // Fallback manual parsing
@@ -240,6 +247,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     let skillsAllow: string[] | undefined;
     let systemPromptEnabled: boolean | undefined;
     let configPath: string | undefined;
+    let profile: string | undefined;
     const taskParts: string[] = [];
 
     for (let i = 0; i < args.length; i++) {
@@ -278,6 +286,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         systemPromptEnabled = false;
       } else if (arg === '--config' && i + 1 < args.length) {
         configPath = args[++i];
+      } else if (arg === '--profile' && i + 1 < args.length) {
+        profile = args[++i];
       } else if (
         !arg.startsWith('-') &&
         taskParts.length === 0 &&
@@ -312,6 +322,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       skillsAllow,
       systemPromptEnabled,
       configPath,
+      profile,
     };
   }
 };
@@ -384,6 +395,16 @@ export const main = async () => {
     return;
   }
 
+  // Validate --profile early so the user gets a clear error before any runtime setup.
+  if (options.profile) {
+    const profileValidation = validateProfileName(options.profile);
+    if (!profileValidation.valid) {
+      console.error(color.error(`Error: ${profileValidation.error}`));
+      process.exitCode = 1;
+      return;
+    }
+  }
+
   const cliOverrides: PartialAgentConfig = {
     logging: options.logLevel ? { level: options.logLevel } : undefined,
     costTracking: options.costTracking !== undefined ? { enabled: options.costTracking } : undefined,
@@ -398,6 +419,7 @@ export const main = async () => {
     maxSteps: options.maxSteps,
     autoApprove: options.autoApprove,
     configPath: options.configPath,
+    profile: options.profile,
   };
 
   const resolvedConfig = resolveAgentConfig(cliOverrides, options.workspaceDir);
@@ -435,6 +457,7 @@ export const main = async () => {
     console.log(`Cost Track  : ${resolvedConfig.costTracking.enabled ? 'YES' : 'NO'}`);
     console.log(`Skills      : ${resolvedConfig.skills.enabled ? filteredSkills.map((s) => s.name).join(', ') || '(none)' : 'DISABLED'}`);
     console.log(`SystemPrompt: ${resolvedConfig.systemPrompt.enabled ? (resolvedConfig.systemPrompt.path ? resolvedConfig.systemPrompt.path : 'DEFAULT') : 'DISABLED'}`);
+    if (options.profile) console.log(`Profile     : ${options.profile}`);
     if (workflows.length > 0) console.log(`Workflows   : ${workflows.map((w) => w.command).join(', ')}`);
     console.log('--------------------------------------------------\n');
   }

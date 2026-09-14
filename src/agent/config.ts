@@ -6,6 +6,7 @@ import type { CostTrackingConfig, ModelPricing } from './usage-tracker.ts';
 import type { SkillsConfig } from './skills.ts';
 import type { SystemPromptConfig } from './system-prompt.ts';
 import { normalizeQualityGatesConfig, type QualityGatesConfig } from './quality-gates.ts';
+import { resolveProfile } from './profiles.ts';
 
 export interface Config {
   PROVIDER?: string;
@@ -79,6 +80,8 @@ export interface PartialAgentConfig {
   autoApprove?: boolean;
   qualityGates?: QualityGatesConfig;
   configPath?: string;
+  /** Optional profile name to apply as additive preset overrides. */
+  profile?: string;
 }
 
 export interface AgentResolvedConfig {
@@ -135,6 +138,11 @@ export const resolveAgentConfig = (
 ): AgentResolvedConfig => {
   const fileConfig = loadConfigFile(workspaceRoot, cliOverrides.configPath);
 
+  // Resolve profile overrides (defaults < file < profile < env < CLI).
+  // The profile layer sits between file config and env/CLI so explicit user
+  // flags always win. autoApprove and configPath are excluded from profiles.
+  const profileOverrides = cliOverrides.profile ? resolveProfile(cliOverrides.profile) : {};
+
   // Defaults
   const defaultLogging: LoggingConfig = { level: 'normal', filePath: path.join(process.cwd(), 'mini-agent.log') };
   const defaultCostTracking: CostTrackingConfig = { enabled: false, currency: 'USD', models: {} };
@@ -161,16 +169,18 @@ export const resolveAgentConfig = (
     ? process.env.MINI_AGENT_SYSTEM_PROMPT_ENABLED === 'true'
     : undefined;
 
-  // Merge Logging (Defaults < Config File < Env < CLI)
+  // Merge Logging (Defaults < Config File < Profile < Env < CLI)
   const level: LogLevel =
     cliOverrides.logging?.level ??
     envLogLevel ??
+    (profileOverrides as PartialAgentConfig).logging?.level ??
     fileLogging?.level ??
     defaultLogging.level;
 
   const filePath: string | undefined =
     cliOverrides.logging?.filePath ??
     envLogFile ??
+    (profileOverrides as PartialAgentConfig).logging?.filePath ??
     fileLogging?.filePath ??
     (level === 'off' ? undefined : defaultLogging.filePath);
 
@@ -190,24 +200,37 @@ export const resolveAgentConfig = (
   const costPricing = cliOverrides.costTracking?.pricing ?? fileCost?.pricing;
   const costModels = { ...(fileCost?.models ?? {}), ...(cliOverrides.costTracking?.models ?? {}) };
 
-  // Merge Skills
+  // Merge Skills (Defaults < Config File < Profile < Env < CLI)
   const skillsEnabled: boolean =
     cliOverrides.skills?.enabled ??
     envSkillsEnabled ??
+    (profileOverrides as PartialAgentConfig).skills?.enabled ??
     fileSkills?.enabled ??
     defaultSkills.enabled;
 
-  const skillsAllow = cliOverrides.skills?.allow ?? fileSkills?.allow ?? defaultSkills.allow;
-  const skillsDeny = cliOverrides.skills?.deny ?? fileSkills?.deny ?? defaultSkills.deny;
+  const skillsAllow =
+    cliOverrides.skills?.allow ??
+    (profileOverrides as PartialAgentConfig).skills?.allow ??
+    fileSkills?.allow ??
+    defaultSkills.allow;
+  const skillsDeny =
+    cliOverrides.skills?.deny ??
+    (profileOverrides as PartialAgentConfig).skills?.deny ??
+    fileSkills?.deny ??
+    defaultSkills.deny;
 
-  // Merge System Prompt
+  // Merge System Prompt (Defaults < Config File < Profile < Env < CLI)
   const sysPromptEnabled: boolean =
     cliOverrides.systemPrompt?.enabled ??
     envSystemPromptEnabled ??
+    (profileOverrides as PartialAgentConfig).systemPrompt?.enabled ??
     fileSysPrompt?.enabled ??
     defaultSystemPrompt.enabled;
 
-  const sysPromptPath = cliOverrides.systemPrompt?.path ?? fileSysPrompt?.path;
+  const sysPromptPath =
+    cliOverrides.systemPrompt?.path ??
+    (profileOverrides as PartialAgentConfig).systemPrompt?.path ??
+    fileSysPrompt?.path;
 
   // Standard settings
   const provider =
@@ -229,6 +252,7 @@ export const resolveAgentConfig = (
 
   const maxSteps =
     cliOverrides.maxSteps ??
+    (profileOverrides as PartialAgentConfig).maxSteps ??
     fileConfig.maxSteps ??
     fileConfig.max_steps;
 
