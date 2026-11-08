@@ -158,7 +158,13 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     const customModel = (parsed.values.model as string | undefined) || process.env.MODEL;
     const customUrl = (parsed.values.url as string | undefined) || process.env.OPENAI_BASE_URL;
     const maxSteps = parseInt((parsed.values['max-steps'] as string) || '30', 10) || DEFAULT_MAX_STEPS;
-    const maxRetries = parseInt((parsed.values['max-retries'] as string) || '3', 10) || 3;
+    let maxRetries = 3;
+    if (parsed.values['max-retries'] !== undefined) {
+      const parsedRetries = parseInt(parsed.values['max-retries'] as string, 10);
+      if (Number.isInteger(parsedRetries) && parsedRetries >= 0) {
+        maxRetries = parsedRetries;
+      }
+    }
     const version = Boolean(parsed.values.version);
 
     let logLevel: LogLevel | undefined;
@@ -282,7 +288,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       } else if (arg === '--max-steps' && i + 1 < args.length) {
         maxSteps = parseInt(args[++i], 10) || DEFAULT_MAX_STEPS;
       } else if (arg === '--max-retries' && i + 1 < args.length) {
-        maxRetries = parseInt(args[++i], 10) || 3;
+        const val = parseInt(args[++i], 10);
+        if (Number.isInteger(val) && val >= 0) maxRetries = val;
       } else if (arg === '--log-level' && i + 1 < args.length) {
         const val = args[++i].toLowerCase();
         if (val === 'off' || val === 'normal' || val === 'verbose') logLevel = val as LogLevel;

@@ -9,7 +9,7 @@ import {
   type OpenSpecChangeContext,
 } from './openspec-parser.ts';
 import { buildExecutionPlan, type PlannedTask } from './task-planner.ts';
-import { selectNextTask } from './task-selector.ts';
+import { selectNextTask, diagnosePlan } from './task-selector.ts';
 import { buildTaskPrompt } from './task-context.ts';
 
 const color = (concolor as any)({
@@ -68,6 +68,9 @@ export class OpenSpecOrchestrator {
 
   constructor(options: OrchestratorOptions) {
     this.options = options;
+    if (options.maxRetries !== undefined && (!Number.isInteger(options.maxRetries) || options.maxRetries < 0)) {
+      throw new Error(`maxRetries must be a non-negative integer, got ${options.maxRetries}`);
+    }
     this.maxRetries = options.maxRetries ?? 3;
     this.maxStepsPerTask = options.maxStepsPerTask ?? 30;
 
@@ -103,7 +106,19 @@ export class OpenSpecOrchestrator {
       // Re-read or re-select next task
       const nextTask = selectNextTask(plan.tasks);
       if (!nextTask) {
-        // No incomplete tasks with satisfied dependencies
+        // Check if there are incomplete tasks that are blocked by dependency issues
+        const incompleteCount = plan.tasks.filter((t) => !t.completed).length;
+        if (incompleteCount > 0) {
+          const diagnostic = diagnosePlan(plan.tasks);
+          const blockReason = diagnostic.reason ?? 'Remaining tasks are blocked by unsatisfied dependencies.';
+          console.log(color.error(`\nExecution blocked: ${blockReason}\n`));
+          executionResults.push({
+            taskId: 'plan-dependency-error',
+            success: false,
+            attempts: 0,
+            error: blockReason,
+          });
+        }
         break;
       }
 
@@ -112,12 +127,13 @@ export class OpenSpecOrchestrator {
 
       let taskSuccess = false;
       let attempt = 1;
+      const maxAttempts = this.maxRetries + 1;
       let lastError: string | undefined;
       let lastGateResults: QualityGateResult[] | undefined;
       let gateFailuresText: string | undefined;
 
-      while (attempt <= this.maxRetries && !this.interrupted) {
-        console.log(color.cyan(`Agent execution... (Attempt ${attempt}/${this.maxRetries})`));
+      while (attempt <= maxAttempts && !this.interrupted) {
+        console.log(color.cyan(`Agent execution... (Attempt ${attempt}/${maxAttempts})`));
 
         // Step 4: Prepare task context
         const taskPrompt = buildTaskPrompt({
@@ -125,7 +141,7 @@ export class OpenSpecOrchestrator {
           currentTask: nextTask,
           allTasks: plan.tasks,
           attempt,
-          maxAttempts: this.maxRetries,
+          maxAttempts,
           lastError,
           gateFailures: gateFailuresText,
         });
@@ -142,8 +158,9 @@ export class OpenSpecOrchestrator {
         }
 
         let agentError: unknown;
+        let agentResult: any;
         try {
-          await runAgentFn({
+          agentResult = await runAgentFn({
             task: taskPrompt,
             provider: this.options.provider,
             permissions: this.options.permissions,
@@ -165,30 +182,18 @@ export class OpenSpecOrchestrator {
           agentError = err;
         }
 
-        // Step 6: Validate result
+        // Step 6: Validate result using qualityGateResults returned directly by runAgent
         let gatesPassed = true;
-        let qualityGateResults: QualityGateResult[] = [];
+        let qualityGateResults: QualityGateResult[] = agentResult?.qualityGateResults ?? [];
+        lastGateResults = qualityGateResults;
 
         if (!agentError) {
-          try {
-            qualityGateResults = await executeQualityGates({
-              config: this.options.qualityGates ?? { enabled: false, gates: [] },
-              workspace,
-              permissions: this.options.permissions,
-            });
-            lastGateResults = qualityGateResults;
-
-            if (hasRequiredGateFailure(qualityGateResults)) {
-              gatesPassed = false;
-              gateFailuresText = formatQualityGateResults(qualityGateResults);
-              console.log(color.error(`Tests / Quality Gates: FAIL`));
-            } else if (qualityGateResults.length > 0) {
-              console.log(color.success(`Tests / Quality Gates: PASS`));
-            }
-          } catch (gateErr) {
+          if (hasRequiredGateFailure(qualityGateResults)) {
             gatesPassed = false;
-            gateFailuresText = String(gateErr);
-            console.log(color.error(`Quality Gates Error: ${gateErr}`));
+            gateFailuresText = formatQualityGateResults(qualityGateResults);
+            console.log(color.error(`Tests / Quality Gates: FAIL`));
+          } else if (qualityGateResults.length > 0) {
+            console.log(color.success(`Tests / Quality Gates: PASS`));
           }
         } else {
           lastError = agentError instanceof Error ? agentError.message : String(agentError);
@@ -214,15 +219,16 @@ export class OpenSpecOrchestrator {
 
         // Failure handling & retry
         attempt++;
-        if (attempt <= this.maxRetries && !this.interrupted) {
-          console.log(color.warn(`Retry ${attempt}/${this.maxRetries}...`));
+        if (attempt <= maxAttempts && !this.interrupted) {
+          const retryNum = attempt - 1;
+          console.log(color.warn(`Retry ${retryNum}/${this.maxRetries}...`));
         }
       }
 
       executionResults.push({
         taskId: nextTask.id,
         success: taskSuccess,
-        attempts: Math.min(attempt, this.maxRetries),
+        attempts: Math.min(attempt - 1, maxAttempts),
         error: taskSuccess ? undefined : (lastError || gateFailuresText),
         qualityGateResults: lastGateResults,
       });
@@ -231,7 +237,7 @@ export class OpenSpecOrchestrator {
         if (this.interrupted) {
           console.log(color.warn(`\nExecution stopped due to interruption.`));
         } else {
-          console.log(color.error(`\nTask ${nextTask.id} failed after ${this.maxRetries} attempts. Stopping execution.\n`));
+          console.log(color.error(`\nTask ${nextTask.id} failed after ${maxAttempts} attempts (${this.maxRetries} retries). Stopping execution.\n`));
         }
         break;
       }

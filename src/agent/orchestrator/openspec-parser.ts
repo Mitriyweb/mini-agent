@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 export interface OpenSpecTask {
   id: string;
@@ -37,6 +38,7 @@ export interface OpenSpecChangeContext {
 export const parseTasksMarkdown = (content: string): OpenSpecTask[] => {
   const lines = content.split('\n');
   const tasks: OpenSpecTask[] = [];
+  const seenIds = new Set<string>();
   let currentSection: string | undefined;
   let autoIdCounter = 1;
 
@@ -100,6 +102,11 @@ export const parseTasksMarkdown = (content: string): OpenSpecTask[] => {
           .filter(Boolean);
         specs.push(...parsedSpecs);
       }
+
+      if (seenIds.has(taskId)) {
+        throw new Error(`Duplicate task ID '${taskId}' found at line ${i + 1}. Task IDs must be unique.`);
+      }
+      seenIds.add(taskId);
 
       tasks.push({
         id: taskId,
@@ -188,8 +195,26 @@ export const resolveOpenSpecDir = (workspaceRoot: string): string => {
  * Resolves the directory for a given change name.
  */
 export const resolveChangeDir = (workspaceRoot: string, changeName: string): string => {
+  if (
+    !changeName ||
+    typeof changeName !== 'string' ||
+    !changeName.trim() ||
+    changeName !== path.basename(changeName) ||
+    changeName === '.' ||
+    changeName === '..'
+  ) {
+    throw new Error('Invalid OpenSpec change name.');
+  }
+
   const openSpecDir = resolveOpenSpecDir(workspaceRoot);
-  return path.join(openSpecDir, 'changes', changeName);
+  const changesDir = path.resolve(openSpecDir, 'changes');
+  const changeDir = path.resolve(changesDir, changeName.trim());
+
+  if (path.dirname(changeDir) !== changesDir) {
+    throw new Error('OpenSpec change path escapes changes directory.');
+  }
+
+  return changeDir;
 };
 
 /**
@@ -300,7 +325,7 @@ export const markTaskCompleteInFile = async (
   if (!found) {
     throw new Error(`Task '${taskId}' not found in ${tasksFilePath}`);
   }
-  const tempPath = `${tasksFilePath}.${Date.now()}.tmp`;
+  const tempPath = `${tasksFilePath}.${randomUUID()}.tmp`;
   await fs.promises.writeFile(tempPath, updatedContent, 'utf8');
   await fs.promises.rename(tempPath, tasksFilePath);
 };

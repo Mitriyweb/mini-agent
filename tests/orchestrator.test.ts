@@ -264,7 +264,7 @@ describe('OpenSpec Orchestrator Test Suite', () => {
     expect(result.success).toBe(false);
     expect(result.completedTasks).toBe(0);
     expect(result.failedTasks).toBe(2);
-    expect(attempts).toBe(3); // Attempted exactly maxRetries times
+    expect(attempts).toBe(4); // 1 initial attempt + 3 retries = 4 attempts
 
     const updatedTasksMd = fs.readFileSync(tasksPath, 'utf8');
     expect(updatedTasksMd).toContain('- [ ] 1.1 Will fail');
@@ -411,5 +411,132 @@ describe('OpenSpec Orchestrator Test Suite', () => {
     expect(parsed.changeName).toBe('my-change');
     expect(parsed.maxRetries).toBe(5);
     expect(parsed.autoApprove).toBe(true);
+  });
+
+  it('15. Path traversal attempts in changeName are rejected', async () => {
+    const workspace = await Workspace.open(tempDir);
+
+    await expect(loadOpenSpecChange(workspace.root, '../../etc/passwd')).rejects.toThrow(
+      'Invalid OpenSpec change name.',
+    );
+
+    await expect(loadOpenSpecChange(workspace.root, '..')).rejects.toThrow(
+      'Invalid OpenSpec change name.',
+    );
+
+    await expect(loadOpenSpecChange(workspace.root, '.')).rejects.toThrow(
+      'Invalid OpenSpec change name.',
+    );
+
+    await expect(loadOpenSpecChange(workspace.root, 'subdir/nested')).rejects.toThrow(
+      'Invalid OpenSpec change name.',
+    );
+  });
+
+  it('16. Duplicate task IDs in tasks.md are rejected', () => {
+    const markdown = `# Tasks
+- [ ] 1.1 First task
+- [ ] 1.1 Duplicate task
+`;
+    expect(() => parseTasksMarkdown(markdown)).toThrow("Duplicate task ID '1.1' found");
+  });
+
+  it('17. Circular dependencies and missing dependency diagnostics', () => {
+    // Missing dependency
+    const tasksWithMissing = parseTasksMarkdown(`
+- [ ] 1.1 Task A [depends on: 9.9]
+`);
+    const planWithMissing = buildExecutionPlan(tasksWithMissing);
+    const next = selectNextTask(planWithMissing.tasks);
+    expect(next).toBe(null);
+
+    // Circular dependency
+    const tasksWithCycle = parseTasksMarkdown(`
+- [ ] 1.1 Task A [depends on: 1.2]
+- [ ] 1.2 Task B [depends on: 1.1]
+`);
+    const planWithCycle = buildExecutionPlan(tasksWithCycle);
+    const nextCycle = selectNextTask(planWithCycle.tasks);
+    expect(nextCycle).toBe(null);
+  });
+
+  it('18. maxRetries = 0 allows exactly 1 attempt', async () => {
+    const changeDir = path.join(tempDir, 'openspec', 'changes', 'zero-retries');
+    fs.mkdirSync(changeDir, { recursive: true });
+    const tasksPath = path.join(changeDir, 'tasks.md');
+    fs.writeFileSync(tasksPath, `# Tasks\n- [ ] 1.1 Task\n`, 'utf8');
+
+    const workspace = await Workspace.open(tempDir);
+    let attempts = 0;
+    const orchestrator = new OpenSpecOrchestrator({
+      workspace,
+      changeName: 'zero-retries',
+      provider: {} as any,
+      permissions: { approve: async () => true, close: () => {} } as any,
+      maxRetries: 0,
+      agentRunner: async () => {
+        attempts++;
+        throw new Error('Immediate failure');
+      },
+    });
+
+    const result = await orchestrator.run();
+    expect(result.success).toBe(false);
+    expect(attempts).toBe(1); // Exactly 1 attempt with 0 retries
+  });
+
+  it('19. Negative maxRetries throws validation error', async () => {
+    const workspace = await Workspace.open(tempDir);
+    expect(() => {
+      new OpenSpecOrchestrator({
+        workspace,
+        changeName: 'test',
+        provider: {} as any,
+        permissions: {} as any,
+        maxRetries: -1,
+      });
+    }).toThrow('maxRetries must be a non-negative integer');
+  });
+
+  it('20. Quality Gates execute once via agentRunner result', async () => {
+    const changeDir = path.join(tempDir, 'openspec', 'changes', 'qg-once');
+    fs.mkdirSync(changeDir, { recursive: true });
+    const tasksPath = path.join(changeDir, 'tasks.md');
+    fs.writeFileSync(tasksPath, `# Tasks\n- [ ] 1.1 Task with gates\n`, 'utf8');
+
+    const workspace = await Workspace.open(tempDir);
+    let agentCallCount = 0;
+
+    const orchestrator = new OpenSpecOrchestrator({
+      workspace,
+      changeName: 'qg-once',
+      provider: {} as any,
+      permissions: { approve: async () => true, close: () => {} } as any,
+      agentRunner: async () => {
+        agentCallCount++;
+        return {
+          text: 'Done',
+          messages: [],
+          qualityGateResults: [
+            { id: 'test', name: 'test', required: true, status: 'passed', stdout: '', stderr: '', durationMs: 10 },
+          ],
+        };
+      },
+    });
+
+    const result = await orchestrator.run();
+    expect(result.success).toBe(true);
+    expect(agentCallCount).toBe(1);
+    expect(result.results[0].qualityGateResults?.length).toBe(1);
+    expect(result.results[0].qualityGateResults?.[0].status).toBe('passed');
+  });
+
+  it('21. Empty tasks.md handles gracefully', () => {
+    const tasks = parseTasksMarkdown('');
+    expect(tasks.length).toBe(0);
+    const plan = buildExecutionPlan(tasks);
+    expect(plan.totalTasks).toBe(0);
+    expect(plan.completedTasks).toBe(0);
+    expect(selectNextTask(plan.tasks)).toBe(null);
   });
 });
