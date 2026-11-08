@@ -20,6 +20,7 @@ import { UsageTracker } from './agent/usage-tracker.ts';
 import { filterSkills } from './agent/skills.ts';
 import { DurableRun } from './agent/run-state.ts';
 import { addMemoryEntry, loadProjectMemory, DEFAULT_MEMORY_PATH } from './agent/memory.ts';
+import { OpenSpecOrchestrator } from './agent/orchestrator/orchestrator.ts';
 import packageJson from '../package.json' with { type: 'json' };
 
 const color = (concolor as any)({
@@ -37,6 +38,7 @@ const VERSION = packageJson.version;
 export enum ParsedCommand {
   Run = 'run',
   Resume = 'resume',
+  Apply = 'apply',
 }
 
 export interface ParsedCLIOptions {
@@ -51,6 +53,8 @@ export interface ParsedCLIOptions {
   task: string;
   command?: ParsedCommand;
   runId?: string;
+  changeName?: string;
+  maxRetries?: number;
   logLevel?: LogLevel;
   costTracking?: boolean;
   skillsEnabled?: boolean;
@@ -70,11 +74,13 @@ Usage:
   mini-agent [options] [task...]
   mini-agent run [options] "task..."
   mini-agent resume [options] <run-id>
+  mini-agent apply [options] <change-name>
   mini-agent memory show
   mini-agent memory add "new knowledge"
 
 Quick examples:
   mini-agent "Add a small feature to the CLI"
+  mini-agent apply add-user-authentication
   mini-agent --log-level verbose "Fix the failing tests"
   mini-agent --cost-tracking "Refactor authentication"
   mini-agent --skills git,code-review "Review this PR"
@@ -88,6 +94,7 @@ Common options:
   --model <model_id>          Override model ID (default: model-router-auto for router)
   --url <base_url>            Override API base URL (default: http://localhost:8787/v1 for router)
   --max-steps <number>        Max agent execution steps (default: 30)
+  --max-retries <number>      Max retries per task in apply mode (default: 3)
   --log-level <level>         Set log level: off, normal, verbose (default: normal)
   --cost-tracking             Enable LLM token usage & cost tracking
   --no-cost-tracking          Disable LLM token usage & cost tracking
@@ -128,6 +135,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         model: { type: 'string' },
         url: { type: 'string' },
         'max-steps': { type: 'string', default: '30' },
+        'max-retries': { type: 'string', default: '3' },
         'log-level': { type: 'string' },
         'cost-tracking': { type: 'boolean', default: undefined },
         'no-cost-tracking': { type: 'boolean', default: false },
@@ -150,6 +158,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     const customModel = (parsed.values.model as string | undefined) || process.env.MODEL;
     const customUrl = (parsed.values.url as string | undefined) || process.env.OPENAI_BASE_URL;
     const maxSteps = parseInt((parsed.values['max-steps'] as string) || '30', 10) || DEFAULT_MAX_STEPS;
+    const maxRetries = parseInt((parsed.values['max-retries'] as string) || '3', 10) || 3;
     const version = Boolean(parsed.values.version);
 
     let logLevel: LogLevel | undefined;
@@ -207,10 +216,11 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       }
     }
 
-    const command = taskParts[0] === ParsedCommand.Run || taskParts[0] === ParsedCommand.Resume
+    const command = taskParts[0] === ParsedCommand.Run || taskParts[0] === ParsedCommand.Resume || taskParts[0] === ParsedCommand.Apply
       ? taskParts.shift() as ParsedCommand
       : undefined;
     const runId = command === ParsedCommand.Resume ? taskParts.shift() : undefined;
+    const changeName = command === ParsedCommand.Apply ? taskParts.shift() : undefined;
     return {
       autoApprove,
       workspaceDir,
@@ -218,11 +228,13 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       customModel,
       customUrl,
       maxSteps,
+      maxRetries,
       help,
       version,
       task: taskParts.join(' ').trim(),
       command,
       runId,
+      changeName,
       logLevel,
       costTracking,
       skillsEnabled,
@@ -239,6 +251,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     let customModel = process.env.MODEL;
     let customUrl = process.env.OPENAI_BASE_URL;
     let maxSteps = DEFAULT_MAX_STEPS;
+    let maxRetries = 3;
     let help = false;
     let version = false;
     let logLevel: LogLevel | undefined;
@@ -268,6 +281,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         customUrl = args[++i];
       } else if (arg === '--max-steps' && i + 1 < args.length) {
         maxSteps = parseInt(args[++i], 10) || DEFAULT_MAX_STEPS;
+      } else if (arg === '--max-retries' && i + 1 < args.length) {
+        maxRetries = parseInt(args[++i], 10) || 3;
       } else if (arg === '--log-level' && i + 1 < args.length) {
         const val = args[++i].toLowerCase();
         if (val === 'off' || val === 'normal' || val === 'verbose') logLevel = val as LogLevel;
@@ -300,10 +315,11 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       }
     }
 
-    const command = taskParts[0] === ParsedCommand.Run || taskParts[0] === ParsedCommand.Resume
+    const command = taskParts[0] === ParsedCommand.Run || taskParts[0] === ParsedCommand.Resume || taskParts[0] === ParsedCommand.Apply
       ? taskParts.shift() as ParsedCommand
       : undefined;
     const runId = command === ParsedCommand.Resume ? taskParts.shift() : undefined;
+    const changeName = command === ParsedCommand.Apply ? taskParts.shift() : undefined;
     return {
       autoApprove,
       workspaceDir,
@@ -311,11 +327,13 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       customModel,
       customUrl,
       maxSteps,
+      maxRetries,
       help,
       version,
       task: taskParts.join(' ').trim(),
       command,
       runId,
+      changeName,
       logLevel,
       costTracking,
       skillsEnabled,
@@ -469,6 +487,63 @@ export const main = async () => {
     removeInterruptHandler();
     permissions.close();
     process.exitCode = 1;
+    return;
+  }
+
+  if (options.command === ParsedCommand.Apply) {
+    const changeName = options.changeName;
+    if (!changeName) {
+      console.error(color.error('Usage: mini-agent apply <change-name>'));
+      removeInterruptHandler();
+      permissions.close();
+      process.exitCode = 1;
+      return;
+    }
+
+    const abortController = new AbortController();
+    const removeApplyInterruptHandler = installInterruptHandler(() => {
+      abortController.abort();
+      permissions.close();
+    });
+
+    try {
+      const usageTracker = new UsageTracker(resolvedConfig.costTracking);
+      const orchestrator = new OpenSpecOrchestrator({
+        workspace,
+        changeName,
+        provider,
+        permissions,
+        maxRetries: options.maxRetries,
+        maxStepsPerTask: resolvedConfig.maxSteps ?? options.maxSteps,
+        onEvent,
+        workflows,
+        skills: allSkills,
+        logging: resolvedConfig.logging,
+        costTracking: resolvedConfig.costTracking,
+        skillsConfig: resolvedConfig.skills,
+        systemPromptConfig: resolvedConfig.systemPrompt,
+        logger,
+        usageTracker,
+        qualityGates: resolvedConfig.qualityGates,
+        signal: abortController.signal,
+      });
+
+      const result = await orchestrator.run();
+      if (!result.success) {
+        process.exitCode = 1;
+      }
+
+      if (resolvedConfig.costTracking.enabled) {
+        console.log(`\n${usageTracker.formatSummary()}`);
+      }
+    } catch (err) {
+      logger.logError('Orchestration error', err);
+      process.exitCode = 1;
+    } finally {
+      removeApplyInterruptHandler();
+      removeInterruptHandler();
+      permissions.close();
+    }
     return;
   }
 

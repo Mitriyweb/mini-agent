@@ -1,0 +1,306 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+export interface OpenSpecTask {
+  id: string;
+  rawText: string;
+  description: string;
+  completed: boolean;
+  section?: string;
+  dependencies: string[];
+  specs: string[];
+  lineNumber: number;
+}
+
+export interface OpenSpecChangeContext {
+  changeName: string;
+  changeDir: string;
+  tasksFilePath: string;
+  tasks: OpenSpecTask[];
+  proposal?: string;
+  design?: string;
+  specs: Record<string, string>;
+  otherFiles: Record<string, string>;
+}
+
+/**
+ * Parses markdown tasks from tasks.md content.
+ * Follows OpenSpec checkbox format:
+ * - [ ] or - [ ] 1.1 Description
+ * - [x] or - [X] or - [ x] counts as completed
+ * Parent headers (e.g. ## 1. Setup) are captured as sections.
+ * Dependencies can be explicitly declared via:
+ *   [depends on: 1.1, 1.2] or [depends: 1.1] or (deps: 1.1)
+ * Relevant spec references can be declared via:
+ *   [spec: auth] or [specs: auth, users]
+ */
+export const parseTasksMarkdown = (content: string): OpenSpecTask[] => {
+  const lines = content.split('\n');
+  const tasks: OpenSpecTask[] = [];
+  let currentSection: string | undefined;
+  let autoIdCounter = 1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Track section headings (## Heading)
+    const headingMatch = trimmed.match(/^#{2,6}\s+(.+)$/);
+    if (headingMatch) {
+      currentSection = headingMatch[1].trim();
+      continue;
+    }
+
+    // Match checkbox list item: - [ ] or - [x] or * [ ] or - [~]
+    // A box holding only x or X (with any spaces) counts as done
+    const taskMatch = line.match(/^(\s*[-*]\s*\[)([^\]]*?)(\]\s*)(.+)$/);
+    if (taskMatch) {
+      const checkInside = taskMatch[2].trim();
+      const completed = checkInside.toLowerCase() === 'x';
+      const fullDescription = taskMatch[4].trim();
+
+      // Check if task starts with an explicit identifier, e.g. "1.1 Task desc" or "TASK-1: desc"
+      let taskId = '';
+      let desc = fullDescription;
+
+      const idMatch = fullDescription.match(/^([a-zA-Z0-9_.-]+)[:.]\s+(.+)$/);
+      if (idMatch) {
+        taskId = idMatch[1];
+        desc = idMatch[2].trim();
+      } else {
+        const simpleNumMatch = fullDescription.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+        if (simpleNumMatch) {
+          taskId = simpleNumMatch[1];
+          desc = simpleNumMatch[2].trim();
+        } else {
+          taskId = `task-${autoIdCounter++}`;
+        }
+      }
+
+      // Check for explicit dependencies: [depends on: ...] or (depends: ...) or [deps: ...]
+      const dependencies: string[] = [];
+      const depMatch = desc.match(/[\[\(](?:depends(?:\s+on)?|deps)[:\s]+([^\]\)]+)[\]\)]/i);
+      if (depMatch) {
+        const rawDeps = depMatch[1];
+        const parsedDeps = rawDeps
+          .split(/[,;\s]+/)
+          .map((d) => d.trim())
+          .filter(Boolean);
+        dependencies.push(...parsedDeps);
+      }
+
+      // Check for explicit spec references: [spec: ...] or [specs: ...]
+      const specs: string[] = [];
+      const specMatch = desc.match(/[\[\(]specs?[:\s]+([^\]\)]+)[\]\)]/i);
+      if (specMatch) {
+        const rawSpecs = specMatch[1];
+        const parsedSpecs = rawSpecs
+          .split(/[,;\s]+/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        specs.push(...parsedSpecs);
+      }
+
+      tasks.push({
+        id: taskId,
+        rawText: line,
+        description: desc,
+        completed,
+        section: currentSection,
+        dependencies,
+        specs,
+        lineNumber: i + 1,
+      });
+    }
+  }
+
+  return tasks;
+};
+
+/**
+ * Updates a specific task's completion checkbox in tasks.md without disturbing
+ * formatting, comments, or any other tasks.
+ */
+export const updateTaskInMarkdown = (
+  content: string,
+  taskId: string,
+  completed: boolean,
+): { updatedContent: string; found: boolean } => {
+  const lines = content.split('\n');
+  let currentSection: string | undefined;
+  let autoIdCounter = 1;
+  let targetIndex = -1;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    const headingMatch = trimmed.match(/^#{2,6}\s+(.+)$/);
+    if (headingMatch) {
+      currentSection = headingMatch[1].trim();
+      continue;
+    }
+
+    const taskMatch = line.match(/^(\s*[-*]\s*\[)([^\]]*?)(\]\s*)(.+)$/);
+    if (taskMatch) {
+      const fullDescription = taskMatch[4].trim();
+      let currentId = '';
+      const idMatch = fullDescription.match(/^([a-zA-Z0-9_.-]+)[:.]\s+(.+)$/);
+      if (idMatch) {
+        currentId = idMatch[1];
+      } else {
+        const simpleNumMatch = fullDescription.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+        if (simpleNumMatch) {
+          currentId = simpleNumMatch[1];
+        } else {
+          currentId = `task-${autoIdCounter++}`;
+        }
+      }
+
+      if (currentId === taskId) {
+        targetIndex = i;
+        const mark = completed ? 'x' : ' ';
+        lines[i] = `${taskMatch[1]}${mark}${taskMatch[3]}${taskMatch[4]}`;
+        break;
+      }
+    }
+  }
+
+  return {
+    updatedContent: lines.join('\n'),
+    found: targetIndex !== -1,
+  };
+};
+
+/**
+ * Finds the OpenSpec root directory in the workspace.
+ * Defaults to `openspec` in workspaceRoot, or checks nearest parent.
+ */
+export const resolveOpenSpecDir = (workspaceRoot: string): string => {
+  const localOpenSpec = path.join(workspaceRoot, 'openspec');
+  if (fs.existsSync(localOpenSpec) && fs.statSync(localOpenSpec).isDirectory()) {
+    return localOpenSpec;
+  }
+  return localOpenSpec;
+};
+
+/**
+ * Resolves the directory for a given change name.
+ */
+export const resolveChangeDir = (workspaceRoot: string, changeName: string): string => {
+  const openSpecDir = resolveOpenSpecDir(workspaceRoot);
+  return path.join(openSpecDir, 'changes', changeName);
+};
+
+/**
+ * Loads and parses an entire OpenSpec change from the workspace.
+ */
+export const loadOpenSpecChange = async (
+  workspaceRoot: string,
+  changeName: string,
+): Promise<OpenSpecChangeContext> => {
+  if (!changeName || !changeName.trim()) {
+    throw new Error('Change name must not be empty.');
+  }
+
+  const changeDir = resolveChangeDir(workspaceRoot, changeName);
+  if (!fs.existsSync(changeDir) || !fs.statSync(changeDir).isDirectory()) {
+    throw new Error(`OpenSpec change directory not found: ${changeDir}`);
+  }
+
+  const tasksFilePath = path.join(changeDir, 'tasks.md');
+  if (!fs.existsSync(tasksFilePath)) {
+    throw new Error(`OpenSpec tasks file not found: ${tasksFilePath}`);
+  }
+
+  const tasksContent = await fs.promises.readFile(tasksFilePath, 'utf8');
+  const tasks = parseTasksMarkdown(tasksContent);
+
+  // Proposal
+  let proposal: string | undefined;
+  const proposalPath = path.join(changeDir, 'proposal.md');
+  if (fs.existsSync(proposalPath)) {
+    proposal = await fs.promises.readFile(proposalPath, 'utf8');
+  }
+
+  // Design
+  let design: string | undefined;
+  const designPath = path.join(changeDir, 'design.md');
+  if (fs.existsSync(designPath)) {
+    design = await fs.promises.readFile(designPath, 'utf8');
+  }
+
+  // Specs under changeDir/specs/ and global openspec/specs/
+  const specs: Record<string, string> = {};
+
+  const loadSpecsFromDir = async (dir: string, prefix = '') => {
+    if (!fs.existsSync(dir)) return;
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        await loadSpecsFromDir(fullPath, relative);
+      } else if (entry.isFile() && (entry.name.endsWith('.md') || entry.name.endsWith('.yaml') || entry.name.endsWith('.json'))) {
+        try {
+          specs[relative] = await fs.promises.readFile(fullPath, 'utf8');
+        } catch {
+          // ignore unreadable files
+        }
+      }
+    }
+  };
+
+  const changeSpecsDir = path.join(changeDir, 'specs');
+  await loadSpecsFromDir(changeSpecsDir, 'change');
+
+  const rootSpecsDir = path.join(resolveOpenSpecDir(workspaceRoot), 'specs');
+  await loadSpecsFromDir(rootSpecsDir, 'global');
+
+  // Other contextual files in changeDir (like .openspec.yaml or notes)
+  const otherFiles: Record<string, string> = {};
+  const rootChangeFiles = await fs.promises.readdir(changeDir, { withFileTypes: true });
+  for (const entry of rootChangeFiles) {
+    if (
+      entry.isFile() &&
+      entry.name !== 'tasks.md' &&
+      entry.name !== 'proposal.md' &&
+      entry.name !== 'design.md'
+    ) {
+      try {
+        otherFiles[entry.name] = await fs.promises.readFile(path.join(changeDir, entry.name), 'utf8');
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  return {
+    changeName,
+    changeDir,
+    tasksFilePath,
+    tasks,
+    proposal,
+    design,
+    specs,
+    otherFiles,
+  };
+};
+
+/**
+ * Writes the updated task status into tasks.md atomically.
+ */
+export const markTaskCompleteInFile = async (
+  tasksFilePath: string,
+  taskId: string,
+  completed = true,
+): Promise<void> => {
+  const content = await fs.promises.readFile(tasksFilePath, 'utf8');
+  const { updatedContent, found } = updateTaskInMarkdown(content, taskId, completed);
+  if (!found) {
+    throw new Error(`Task '${taskId}' not found in ${tasksFilePath}`);
+  }
+  const tempPath = `${tasksFilePath}.${Date.now()}.tmp`;
+  await fs.promises.writeFile(tempPath, updatedContent, 'utf8');
+  await fs.promises.rename(tempPath, tasksFilePath);
+};
