@@ -34,6 +34,11 @@ A lightweight, modular coding agent harness supporting multi-provider LLMs (**Mo
 - **Quality Gates**:
   - Run configured project checks through the normal shell permission flow.
   - Block successful completion when a required check fails, while allowing optional checks to be skipped.
+- **Deterministic OpenSpec Orchestrator**:
+  - Automatically execute an entire OpenSpec change sequentially (`mini-agent apply <change-name>`).
+  - Zero LLM tokens consumed for orchestration logic (parsing, selection, and scheduling).
+  - Validates tasks with Quality Gates before marking them completed in `tasks.md`.
+  - Resilient execution with bounded retries and resumption support.
 - **Modular Local Tools**: Includes file & workspace operations (`read`, `write`, `edit`, `patch`, `delete`, `glob`, `grep`, `bash`, `check`, `fetch`, `todo`, `openspec`).
 
 ---
@@ -56,6 +61,19 @@ This script downloads the matching `mini-agent` binary for your OS/architecture 
 ```bash
 mini-agent "Fix the failing tests"
 ```
+
+### Deterministic OpenSpec Change Execution (`apply`)
+```bash
+mini-agent apply add-user-authentication
+```
+
+Runs the entire OpenSpec change sequentially one task at a time. The orchestrator:
+1. Loads `tasks.md`, `proposal.md`, `design.md`, and relevant specs from `openspec/changes/<change-name>/`.
+2. Selects the next eligible incomplete task whose dependencies are satisfied.
+3. Prepares a focused context prompt for the agent runtime.
+4. Executes the task using `runAgent()` and validates results with Quality Gates.
+5. Marks the task complete `- [x]` in `tasks.md` only after successful validation.
+6. Retries failed tasks up to `--max-retries` (default: 3) with error and quality gate feedback.
 
 ### Durable Run and Resume
 ```bash
@@ -103,6 +121,7 @@ mini-agent --no-skills "Analyze this code"
 mini-agent [options] [task...]
 mini-agent run [options] "task..."
 mini-agent resume [options] <run-id>
+mini-agent apply [options] <change-name>
 mini-agent memory show
 mini-agent memory add "new knowledge"
 
@@ -113,6 +132,7 @@ Options:
   --model <model_id>          Override model ID (default: model-router-auto for router)
   --url <base_url>            Override API base URL (default: http://localhost:8787/v1)
   --max-steps <number>        Max execution steps (default: 30)
+  --max-retries <number>      Max retries per task in apply mode (default: 3)
   --log-level <level>         Set log level: off, normal, verbose (default: normal)
   --cost-tracking             Enable LLM token usage & cost tracking
   --no-cost-tracking          Disable LLM token usage & cost tracking

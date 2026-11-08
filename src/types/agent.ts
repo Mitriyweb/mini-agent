@@ -44,6 +44,7 @@ export interface AgentOptions {
   usageTracker?: UsageTracker;
   durableRun?: DurableRun;
   qualityGates?: QualityGatesConfig;
+  signal?: AbortSignal;
 }
 
 export interface AgentResult {

@@ -149,10 +149,15 @@ export const initialMessages = (
 };
 
 export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
-  const { task, provider, permissions, workspace } = options;
+  const { task, provider, permissions, workspace, signal } = options;
   const { maxSteps = 30, workflows = [], skills = [] } = options;
   const { onEvent, priorMessages } = options;
   const durableRun = options.durableRun;
+
+  if (signal?.aborted) {
+    durableRun?.interrupt();
+    throw new Error('Agent execution aborted.');
+  }
 
   // Initialize Logger
   const logger =
@@ -223,6 +228,10 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
   try {
     const firstStep = durableRun?.state.messages.length ? durableRun.state.currentStep + 1 : 1;
     for (let step = firstStep; step <= maxSteps; step += 1) {
+      if (signal?.aborted) {
+        durableRun?.interrupt();
+        throw new Error('Agent execution aborted.');
+      }
     const model = provider.model;
     await emit('step', { step, maxSteps, model });
     durableRun?.update(step, messages);
@@ -290,6 +299,10 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
     if (text) await emit('assistant', { text });
 
     for (const call of calls) {
+      if (signal?.aborted) {
+        durableRun?.interrupt();
+        throw new Error('Agent execution aborted.');
+      }
       const persistedOutput = durableRun?.completedToolOutput(call.id);
       const output = persistedOutput === undefined
         ? await runToolCall(call, toolContext)
