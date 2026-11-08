@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import concolor from 'concolor';
 import { runAgent } from '../agent.ts';
 import { executeQualityGates, formatQualityGateResults, hasRequiredGateFailure, type QualityGateResult } from '../quality-gates.ts';
@@ -66,6 +68,8 @@ export class OpenSpecOrchestrator {
   private maxStepsPerTask: number;
   private interrupted = false;
 
+  private abortListener?: () => void;
+
   constructor(options: OrchestratorOptions) {
     this.options = options;
     if (options.maxRetries !== undefined && (!Number.isInteger(options.maxRetries) || options.maxRetries < 0)) {
@@ -75,9 +79,14 @@ export class OpenSpecOrchestrator {
     this.maxStepsPerTask = options.maxStepsPerTask ?? 30;
 
     if (options.signal) {
-      options.signal.addEventListener('abort', () => {
+      if (options.signal.aborted) {
         this.interrupted = true;
-      });
+      } else {
+        this.abortListener = () => {
+          this.interrupted = true;
+        };
+        options.signal.addEventListener('abort', this.abortListener, { once: true });
+      }
     }
   }
 
@@ -94,6 +103,10 @@ export class OpenSpecOrchestrator {
 
     // Step 2: Build execution plan
     let plan = buildExecutionPlan(changeContext.tasks);
+
+    if (plan.totalTasks === 0) {
+      throw new Error(`OpenSpec change "${changeName}" contains no executable tasks in tasks.md.`);
+    }
 
     console.log(color.info(`\nOpenSpec Change: ${changeName}`));
     console.log(`Found ${plan.totalTasks} total tasks (${plan.completedTasks} already completed, ${plan.pendingTasks} remaining).\n`);
@@ -148,11 +161,37 @@ export class OpenSpecOrchestrator {
 
         // Step 5: Execute using existing agent runtime and durable run
         let durableRun: DurableRun | undefined;
+        const taskRunRecordFile = path.join(
+          workspace.root,
+          '.mini-agent',
+          'orchestrator',
+          changeName,
+          `${nextTask.id}.runid`,
+        );
+
         try {
-          durableRun = DurableRun.create(
-            workspace.root,
-            `[OpenSpec ${changeName}] [${nextTask.id}] ${nextTask.description}`,
-          );
+          if (fs.existsSync(taskRunRecordFile)) {
+            const recordedRunId = fs.readFileSync(taskRunRecordFile, 'utf8').trim();
+            try {
+              const candidate = DurableRun.load(workspace.root, recordedRunId);
+              if (candidate.state.status === 'interrupted' || candidate.state.status === 'running') {
+                candidate.resume();
+                durableRun = candidate;
+                console.log(color.cyan(`Resuming interrupted durable run: ${durableRun.state.id}`));
+              }
+            } catch {
+              // Could not resume candidate, fallback to create
+            }
+          }
+
+          if (!durableRun) {
+            durableRun = DurableRun.create(
+              workspace.root,
+              `[OpenSpec ${changeName}] [${nextTask.id}] ${nextTask.description}`,
+            );
+            fs.mkdirSync(path.dirname(taskRunRecordFile), { recursive: true });
+            fs.writeFileSync(taskRunRecordFile, durableRun.state.id, 'utf8');
+          }
         } catch {
           // best-effort durable run creation
         }
@@ -177,6 +216,7 @@ export class OpenSpecOrchestrator {
             usageTracker: this.options.usageTracker,
             durableRun,
             qualityGates: this.options.qualityGates,
+            signal: this.options.signal,
           });
         } catch (err) {
           agentError = err;
@@ -208,6 +248,13 @@ export class OpenSpecOrchestrator {
           // Step 7: Update OpenSpec progress only after successful validation
           await markTaskCompleteInFile(changeContext.tasksFilePath, nextTask.id, true);
           nextTask.completed = true;
+          try {
+            if (fs.existsSync(taskRunRecordFile)) {
+              fs.unlinkSync(taskRunRecordFile);
+            }
+          } catch {
+            // ignore
+          }
           plan = buildExecutionPlan(plan.tasks);
           break;
         }
@@ -251,6 +298,10 @@ export class OpenSpecOrchestrator {
       console.log(color.success(`All ${plan.totalTasks} tasks completed successfully for change "${changeName}".`));
     } else {
       console.log(color.warn(`Execution ended: ${completedCount}/${plan.totalTasks} tasks complete.`));
+    }
+
+    if (this.options.signal && this.abortListener) {
+      this.options.signal.removeEventListener('abort', this.abortListener);
     }
 
     return {

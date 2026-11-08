@@ -65,15 +65,15 @@ export const parseTasksMarkdown = (content: string): OpenSpecTask[] => {
       let taskId = '';
       let desc = fullDescription;
 
-      const idMatch = fullDescription.match(/^([a-zA-Z0-9_.-]+)[:.]\s+(.+)$/);
-      if (idMatch) {
-        taskId = idMatch[1];
-        desc = idMatch[2].trim();
+      const numHierarchicalMatch = fullDescription.match(/^(\d+(?:\.\d+)*)(?:\s+|[:.]\s+)(.+)$/);
+      if (numHierarchicalMatch) {
+        taskId = numHierarchicalMatch[1];
+        desc = numHierarchicalMatch[2].trim();
       } else {
-        const simpleNumMatch = fullDescription.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
-        if (simpleNumMatch) {
-          taskId = simpleNumMatch[1];
-          desc = simpleNumMatch[2].trim();
+        const idMatch = fullDescription.match(/^([a-zA-Z0-9_.-]+)[:.]\s+(.+)$/);
+        if (idMatch) {
+          taskId = idMatch[1];
+          desc = idMatch[2].trim();
         } else {
           taskId = `task-${autoIdCounter++}`;
         }
@@ -152,13 +152,13 @@ export const updateTaskInMarkdown = (
     if (taskMatch) {
       const fullDescription = taskMatch[4].trim();
       let currentId = '';
-      const idMatch = fullDescription.match(/^([a-zA-Z0-9_.-]+)[:.]\s+(.+)$/);
-      if (idMatch) {
-        currentId = idMatch[1];
+      const numHierarchicalMatch = fullDescription.match(/^(\d+(?:\.\d+)*)(?:\s+|[:.]\s+)(.+)$/);
+      if (numHierarchicalMatch) {
+        currentId = numHierarchicalMatch[1];
       } else {
-        const simpleNumMatch = fullDescription.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
-        if (simpleNumMatch) {
-          currentId = simpleNumMatch[1];
+        const idMatch = fullDescription.match(/^([a-zA-Z0-9_.-]+)[:.]\s+(.+)$/);
+        if (idMatch) {
+          currentId = idMatch[1];
         } else {
           currentId = `task-${autoIdCounter++}`;
         }
@@ -214,6 +214,16 @@ export const resolveChangeDir = (workspaceRoot: string, changeName: string): str
     throw new Error('OpenSpec change path escapes changes directory.');
   }
 
+  // If changeDir exists, resolve realpath to ensure symlinks don't escape
+  if (fs.existsSync(changeDir)) {
+    const realChangesDir = fs.existsSync(changesDir) ? fs.realpathSync(changesDir) : changesDir;
+    const realChangeDir = fs.realpathSync(changeDir);
+    const relative = path.relative(realChangesDir, realChangeDir);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new Error('OpenSpec change symlink escapes changes directory.');
+    }
+  }
+
   return changeDir;
 };
 
@@ -236,6 +246,14 @@ export const loadOpenSpecChange = async (
   const tasksFilePath = path.join(changeDir, 'tasks.md');
   if (!fs.existsSync(tasksFilePath)) {
     throw new Error(`OpenSpec tasks file not found: ${tasksFilePath}`);
+  }
+
+  // Ensure tasks.md realpath does not escape realChangeDir via symlinks
+  const realChangeDir = fs.realpathSync(changeDir);
+  const realTasksFilePath = fs.realpathSync(tasksFilePath);
+  const relTasks = path.relative(realChangeDir, realTasksFilePath);
+  if (relTasks.startsWith('..') || path.isAbsolute(relTasks)) {
+    throw new Error('OpenSpec tasks file symlink escapes change directory.');
   }
 
   const tasksContent = await fs.promises.readFile(tasksFilePath, 'utf8');
@@ -326,6 +344,16 @@ export const markTaskCompleteInFile = async (
     throw new Error(`Task '${taskId}' not found in ${tasksFilePath}`);
   }
   const tempPath = `${tasksFilePath}.${randomUUID()}.tmp`;
-  await fs.promises.writeFile(tempPath, updatedContent, 'utf8');
-  await fs.promises.rename(tempPath, tasksFilePath);
+  try {
+    await fs.promises.writeFile(tempPath, updatedContent, 'utf8');
+    await fs.promises.rename(tempPath, tasksFilePath);
+  } finally {
+    try {
+      if (fs.existsSync(tempPath)) {
+        await fs.promises.unlink(tempPath);
+      }
+    } catch {
+      // Ignore cleanup error if already renamed
+    }
+  }
 };

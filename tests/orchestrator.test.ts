@@ -531,12 +531,104 @@ describe('OpenSpec Orchestrator Test Suite', () => {
     expect(result.results[0].qualityGateResults?.[0].status).toBe('passed');
   });
 
-  it('21. Empty tasks.md handles gracefully', () => {
+  it('21. Empty tasks.md handles gracefully in parser and rejects in orchestrator', async () => {
     const tasks = parseTasksMarkdown('');
     expect(tasks.length).toBe(0);
     const plan = buildExecutionPlan(tasks);
     expect(plan.totalTasks).toBe(0);
     expect(plan.completedTasks).toBe(0);
     expect(selectNextTask(plan.tasks)).toBe(null);
+
+    const changeDir = path.join(tempDir, 'openspec', 'changes', 'empty-change');
+    fs.mkdirSync(changeDir, { recursive: true });
+    fs.writeFileSync(path.join(changeDir, 'tasks.md'), '# Tasks\n', 'utf8');
+
+    const workspace = await Workspace.open(tempDir);
+    const orchestrator = new OpenSpecOrchestrator({
+      workspace,
+      changeName: 'empty-change',
+      provider: {} as any,
+      permissions: { approve: async () => true, close: () => {} } as any,
+    });
+
+    await expect(orchestrator.run()).rejects.toThrow('contains no executable tasks in tasks.md');
+  });
+
+  it('22. Symlink directory escaping changesDir is rejected', async () => {
+    const workspace = await Workspace.open(tempDir);
+    const externalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'external-change-'));
+    fs.writeFileSync(path.join(externalDir, 'tasks.md'), '# Tasks\n- [ ] 1.1 Ext\n', 'utf8');
+
+    const changesDir = path.join(tempDir, 'openspec', 'changes');
+    fs.mkdirSync(changesDir, { recursive: true });
+    const symlinkPath = path.join(changesDir, 'symlinked-change');
+    fs.symlinkSync(externalDir, symlinkPath);
+
+    await expect(loadOpenSpecChange(workspace.root, 'symlinked-change')).rejects.toThrow(
+      'OpenSpec change symlink escapes changes directory.',
+    );
+
+    fs.rmSync(externalDir, { recursive: true, force: true });
+  });
+
+  it('23. Symlink tasks.md escaping change directory is rejected', async () => {
+    const workspace = await Workspace.open(tempDir);
+    const externalTasks = path.join(os.tmpdir(), `external-tasks-${Date.now()}.md`);
+    fs.writeFileSync(externalTasks, '# Tasks\n- [ ] 1.1 Ext\n', 'utf8');
+
+    const changeDir = path.join(tempDir, 'openspec', 'changes', 'symlink-task-change');
+    fs.mkdirSync(changeDir, { recursive: true });
+    const symlinkTasks = path.join(changeDir, 'tasks.md');
+    fs.symlinkSync(externalTasks, symlinkTasks);
+
+    await expect(loadOpenSpecChange(workspace.root, 'symlink-task-change')).rejects.toThrow(
+      'OpenSpec tasks file symlink escapes change directory.',
+    );
+
+    fs.unlinkSync(externalTasks);
+  });
+
+  it('24. Hierarchical task IDs (1.1.1, 1.1.2) parse correctly with dependencies', () => {
+    const markdown = `# Tasks
+- [ ] 1.1 Base auth
+- [ ] 1.1.1 Token parsing
+- [ ] 1.1.2 Refresh flow [depends on: 1.1.1]
+`;
+    const tasks = parseTasksMarkdown(markdown);
+    expect(tasks.length).toBe(3);
+    expect(tasks[0].id).toBe('1.1');
+    expect(tasks[1].id).toBe('1.1.1');
+    expect(tasks[2].id).toBe('1.1.2');
+    expect(tasks[2].dependencies).toEqual(['1.1.1']);
+  });
+
+  it('25. AbortSignal propagates to runAgent and stops execution', async () => {
+    const changeDir = path.join(tempDir, 'openspec', 'changes', 'signal-prop-change');
+    fs.mkdirSync(changeDir, { recursive: true });
+    fs.writeFileSync(path.join(changeDir, 'tasks.md'), '# Tasks\n- [ ] 1.1 Long task\n', 'utf8');
+
+    const workspace = await Workspace.open(tempDir);
+    const controller = new AbortController();
+    let runnerSignalReceived: boolean | undefined;
+
+    const orchestrator = new OpenSpecOrchestrator({
+      workspace,
+      changeName: 'signal-prop-change',
+      provider: {} as any,
+      permissions: { approve: async () => true, close: () => {} } as any,
+      signal: controller.signal,
+      agentRunner: async (options) => {
+        runnerSignalReceived = options.signal !== undefined;
+        controller.abort();
+        if (options.signal?.aborted) {
+          throw new Error('Agent execution aborted.');
+        }
+        return { text: 'Done', messages: [] };
+      },
+    });
+
+    const result = await orchestrator.run();
+    expect(runnerSignalReceived).toBe(true);
+    expect(result.success).toBe(false);
   });
 });
