@@ -131,6 +131,9 @@ export class Logger {
       }
     }
     this.writer(text);
+    if (this.filePath) {
+      console.error(text);
+    }
   }
 }
 
