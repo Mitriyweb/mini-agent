@@ -55,6 +55,8 @@ export interface ParsedCLIOptions {
   runId?: string;
   changeName?: string;
   maxRetries?: number;
+  retryEnabled?: boolean;
+  retryAttempts?: number;
   logLevel?: LogLevel;
   costTracking?: boolean;
   skillsEnabled?: boolean;
@@ -95,6 +97,9 @@ Common options:
   --url <base_url>            Override API base URL (default: http://localhost:8787/v1 for router)
   --max-steps <number>        Max agent execution steps (default: 30)
   --max-retries <number>      Max retries per task in apply mode (default: 3)
+  --retry                     Enable automatic retry on transient LLM errors (default)
+  --no-retry                  Disable automatic retry on transient LLM errors
+  --retry-attempts <number>   Max retry attempts on transient LLM errors (default: 3)
   --log-level <level>         Set log level: off, normal, verbose (default: normal)
   --cost-tracking             Enable LLM token usage & cost tracking
   --no-cost-tracking          Disable LLM token usage & cost tracking
@@ -136,6 +141,9 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         url: { type: 'string' },
         'max-steps': { type: 'string', default: '30' },
         'max-retries': { type: 'string', default: '3' },
+        retry: { type: 'boolean', default: undefined },
+        'no-retry': { type: 'boolean', default: false },
+        'retry-attempts': { type: 'string' },
         'log-level': { type: 'string' },
         'cost-tracking': { type: 'boolean', default: undefined },
         'no-cost-tracking': { type: 'boolean', default: false },
@@ -165,6 +173,21 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         maxRetries = parsedRetries;
       }
     }
+    let retryEnabled: boolean | undefined;
+    if (parsed.values['no-retry']) {
+      retryEnabled = false;
+    } else if (parsed.values.retry === true) {
+      retryEnabled = true;
+    }
+
+    let retryAttempts: number | undefined;
+    if (parsed.values['retry-attempts'] !== undefined) {
+      const parsedAttempts = parseInt(parsed.values['retry-attempts'] as string, 10);
+      if (Number.isInteger(parsedAttempts) && parsedAttempts >= 1) {
+        retryAttempts = parsedAttempts;
+      }
+    }
+
     const version = Boolean(parsed.values.version);
 
     let logLevel: LogLevel | undefined;
@@ -235,6 +258,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       customUrl,
       maxSteps,
       maxRetries,
+      retryEnabled,
+      retryAttempts,
       help,
       version,
       task: taskParts.join(' ').trim(),
@@ -258,6 +283,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     let customUrl = process.env.OPENAI_BASE_URL;
     let maxSteps = DEFAULT_MAX_STEPS;
     let maxRetries = 3;
+    let retryEnabled: boolean | undefined;
+    let retryAttempts: number | undefined;
     let help = false;
     let version = false;
     let logLevel: LogLevel | undefined;
@@ -290,6 +317,13 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       } else if (arg === '--max-retries' && i + 1 < args.length) {
         const val = parseInt(args[++i], 10);
         if (Number.isInteger(val) && val >= 0) maxRetries = val;
+      } else if (arg === '--retry') {
+        retryEnabled = true;
+      } else if (arg === '--no-retry') {
+        retryEnabled = false;
+      } else if (arg === '--retry-attempts' && i + 1 < args.length) {
+        const val = parseInt(args[++i], 10);
+        if (Number.isInteger(val) && val >= 1) retryAttempts = val;
       } else if (arg === '--log-level' && i + 1 < args.length) {
         const val = args[++i].toLowerCase();
         if (val === 'off' || val === 'normal' || val === 'verbose') logLevel = val as LogLevel;
@@ -335,6 +369,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       customUrl,
       maxSteps,
       maxRetries,
+      retryEnabled,
+      retryAttempts,
       help,
       version,
       task: taskParts.join(' ').trim(),
@@ -438,6 +474,13 @@ export const main = async () => {
         ? { enabled: options.skillsEnabled ?? true, allow: options.skillsAllow }
         : undefined,
     systemPrompt: options.systemPromptEnabled !== undefined ? { enabled: options.systemPromptEnabled } : undefined,
+    retry:
+      options.retryEnabled !== undefined || options.retryAttempts !== undefined
+        ? {
+            enabled: options.retryEnabled,
+            maxAttempts: options.retryAttempts,
+          }
+        : undefined,
     provider: options.customProvider,
     model: options.customModel,
     baseURL: options.customUrl,
@@ -460,6 +503,7 @@ export const main = async () => {
   if (resolvedConfig.provider) providerOptions.provider = resolvedConfig.provider;
   if (resolvedConfig.model) providerOptions.model = resolvedConfig.model;
   if (resolvedConfig.baseURL) providerOptions.baseURL = resolvedConfig.baseURL;
+  providerOptions.retry = resolvedConfig.retry;
 
   let provider = createProvider(providerOptions);
   const permissions = createPermissions({ autoApprove: resolvedConfig.autoApprove }, workspace);
@@ -482,6 +526,7 @@ export const main = async () => {
     console.log(`Cost Track  : ${resolvedConfig.costTracking.enabled ? 'YES' : 'NO'}`);
     console.log(`Skills      : ${resolvedConfig.skills.enabled ? filteredSkills.map((s) => s.name).join(', ') || '(none)' : 'DISABLED'}`);
     console.log(`SystemPrompt: ${resolvedConfig.systemPrompt.enabled ? (resolvedConfig.systemPrompt.path ? resolvedConfig.systemPrompt.path : 'DEFAULT') : 'DISABLED'}`);
+    console.log(`Retry       : ${resolvedConfig.retry.enabled ? `enabled (${resolvedConfig.retry.maxAttempts} attempts)` : 'disabled'}`);
     if (options.profile) console.log(`Profile     : ${options.profile}`);
     if (workflows.length > 0) console.log(`Workflows   : ${workflows.map((w) => w.command).join(', ')}`);
     console.log('--------------------------------------------------\n');

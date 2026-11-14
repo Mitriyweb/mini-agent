@@ -5,8 +5,50 @@ import type { LogLevel, LoggingConfig } from './logging.ts';
 import type { CostTrackingConfig, ModelPricing } from './usage-tracker.ts';
 import type { SkillsConfig } from './skills.ts';
 import type { SystemPromptConfig } from './system-prompt.ts';
+import type { RetryConfig } from '../types/llm.ts';
 import { normalizeQualityGatesConfig, type QualityGatesConfig } from './quality-gates.ts';
 import { resolveProfile } from './profiles.ts';
+
+export { type RetryConfig } from '../types/llm.ts';
+
+export const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  enabled: true,
+  maxAttempts: 3,
+  initialDelayMs: 1000,
+  backoffFactor: 2,
+  maxDelayMs: 30000,
+};
+
+export const validateRetryConfig = (config: Partial<RetryConfig>): void => {
+  if (config.enabled !== undefined) {
+    if (typeof config.enabled !== 'boolean') {
+      throw new Error(`retry.enabled must be a boolean (true/false), got: ${typeof config.enabled} (${config.enabled})`);
+    }
+  }
+  if (config.maxAttempts !== undefined) {
+    if (!Number.isInteger(config.maxAttempts) || config.maxAttempts < 1) {
+      throw new Error(`retry.maxAttempts must be a positive integer >= 1, got: ${config.maxAttempts}`);
+    }
+  }
+  if (config.initialDelayMs !== undefined) {
+    if (!Number.isInteger(config.initialDelayMs) || config.initialDelayMs < 0) {
+      throw new Error(`retry.initialDelayMs must be a non-negative integer >= 0, got: ${config.initialDelayMs}`);
+    }
+  }
+  if (config.backoffFactor !== undefined) {
+    if (typeof config.backoffFactor !== 'number' || !Number.isFinite(config.backoffFactor) || config.backoffFactor < 1) {
+      throw new Error(`retry.backoffFactor must be a finite number >= 1, got: ${config.backoffFactor}`);
+    }
+  }
+  if (config.maxDelayMs !== undefined) {
+    if (!Number.isInteger(config.maxDelayMs) || config.maxDelayMs < 0) {
+      throw new Error(`retry.maxDelayMs must be a non-negative integer >= 0, got: ${config.maxDelayMs}`);
+    }
+    if (config.initialDelayMs !== undefined && config.maxDelayMs < config.initialDelayMs) {
+      throw new Error(`retry.maxDelayMs (${config.maxDelayMs}) cannot be less than retry.initialDelayMs (${config.initialDelayMs})`);
+    }
+  }
+};
 
 export interface Config {
   PROVIDER?: string;
@@ -66,6 +108,7 @@ export interface FileConfigSchema {
   autoApprove?: boolean;
   quality_gates?: unknown;
   qualityGates?: unknown;
+  retry?: Partial<RetryConfig>;
 }
 
 export interface PartialAgentConfig {
@@ -73,6 +116,7 @@ export interface PartialAgentConfig {
   costTracking?: Partial<CostTrackingConfig>;
   skills?: Partial<SkillsConfig>;
   systemPrompt?: Partial<SystemPromptConfig>;
+  retry?: Partial<RetryConfig>;
   provider?: string;
   model?: string;
   baseURL?: string;
@@ -89,6 +133,7 @@ export interface AgentResolvedConfig {
   costTracking: CostTrackingConfig;
   skills: SkillsConfig;
   systemPrompt: SystemPromptConfig;
+  retry: RetryConfig;
   provider?: string;
   model?: string;
   baseURL?: string;
@@ -262,6 +307,34 @@ export const resolveAgentConfig = (
     fileConfig.autoApprove ??
     fileConfig.auto_approve;
 
+  // Merge Retry Config (Defaults < Config File < Profile < Env < CLI)
+  const envRetryEnabled =
+    process.env.MINI_AGENT_RETRY !== undefined
+      ? process.env.MINI_AGENT_RETRY !== 'false' && process.env.MINI_AGENT_RETRY !== '0'
+      : undefined;
+  const envRetryAttempts =
+    process.env.MINI_AGENT_RETRY_ATTEMPTS !== undefined
+      ? parseInt(process.env.MINI_AGENT_RETRY_ATTEMPTS, 10)
+      : undefined;
+
+  const retryCandidate: Partial<RetryConfig> = {
+    ...DEFAULT_RETRY_CONFIG,
+    ...(fileConfig.retry ?? {}),
+    ...((profileOverrides as PartialAgentConfig).retry ?? {}),
+    ...(envRetryEnabled !== undefined ? { enabled: envRetryEnabled } : {}),
+    ...(envRetryAttempts !== undefined ? { maxAttempts: envRetryAttempts } : {}),
+    ...(cliOverrides.retry ?? {}),
+  };
+
+  validateRetryConfig(retryCandidate);
+  const retry: RetryConfig = {
+    enabled: retryCandidate.enabled ?? DEFAULT_RETRY_CONFIG.enabled,
+    maxAttempts: retryCandidate.maxAttempts ?? DEFAULT_RETRY_CONFIG.maxAttempts,
+    initialDelayMs: retryCandidate.initialDelayMs ?? DEFAULT_RETRY_CONFIG.initialDelayMs,
+    backoffFactor: retryCandidate.backoffFactor ?? DEFAULT_RETRY_CONFIG.backoffFactor,
+    maxDelayMs: retryCandidate.maxDelayMs ?? DEFAULT_RETRY_CONFIG.maxDelayMs,
+  };
+
   return {
     logging: { level, filePath },
     costTracking: {
@@ -279,6 +352,7 @@ export const resolveAgentConfig = (
       enabled: sysPromptEnabled,
       path: sysPromptPath,
     },
+    retry,
     provider,
     model,
     baseURL,

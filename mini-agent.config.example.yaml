@@ -35,3 +35,15 @@ skills:
 system_prompt:
   enabled: true
   path: "" # Optional custom system prompt path (e.g. "./prompts/custom-system.md")
+
+# Retry policy for transient LLM errors
+retry:
+  enabled: true
+  maxAttempts: 3                # Number of retry attempts for transient errors
+  initialDelayMs: 1000          # Initial backoff delay in milliseconds
+  backoffFactor: 2              # Exponential backoff multiplier (delay doubles each attempt)
+  maxDelayMs: 30000             # Maximum delay between retries (caps exponential growth)
+
+# Note: --retry-attempts <n> (CLI) controls maxAttempts for this agent run only.
+# Distinct from --max-retries <n> (OpenSpec tool retries on permanent failures).
+

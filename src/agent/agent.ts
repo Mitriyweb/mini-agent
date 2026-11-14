@@ -248,7 +248,7 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
     const startTime = Date.now();
     let response: any;
     try {
-      response = await provider.respond({ messages, tools });
+      response = await provider.respond({ messages, tools, signal });
     } catch (err) {
       logger.logError(`LLM Request failed at step ${step}`, err);
       throw err;

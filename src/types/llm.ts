@@ -6,12 +6,22 @@ export interface ModelInfo {
   description?: string;
 }
 
+export interface RetryConfig {
+  enabled: boolean;
+  maxAttempts: number;
+  initialDelayMs: number;
+  backoffFactor: number;
+  maxDelayMs: number;
+}
+
 export interface ProviderClientOptions {
   apiKey?: string;
   model?: string;
   baseURL?: string;
   fallbacks?: string[];
   log?: (message: string) => void;
+  retry?: Partial<RetryConfig>;
+  delayFn?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
 export interface ProviderOptions extends ProviderClientOptions {
@@ -21,6 +31,7 @@ export interface ProviderOptions extends ProviderClientOptions {
 export interface LLMRequest {
   messages: ChatCompletionMessageParam[];
   tools?: any[];
+  signal?: AbortSignal;
 }
 
 export interface Provider {

@@ -8,5 +8,5 @@ config.js
 .*.bun-build
 permissions.json
 mini-agent.log
-openspec/changes/*
+openspec/changes/archive
 audit.jsonl

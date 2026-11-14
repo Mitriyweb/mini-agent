@@ -133,6 +133,9 @@ Options:
   --url <base_url>            Override API base URL (default: http://localhost:8787/v1)
   --max-steps <number>        Max execution steps (default: 30)
   --max-retries <number>      Max retries per task in apply mode (default: 3)
+  --retry                     Enable automatic retry on transient LLM errors (default)
+  --no-retry                  Disable automatic retry on transient LLM errors
+  --retry-attempts <number>   Max retry attempts on transient LLM errors (default: 3)
   --log-level <level>         Set log level: off, normal, verbose (default: normal)
   --cost-tracking             Enable LLM token usage & cost tracking
   --no-cost-tracking          Disable LLM token usage & cost tracking
@@ -158,10 +161,14 @@ defaults
   ↓
 config file
   ↓
+profile preset (sits between file config and env for additive role-based overrides)
+  ↓
 environment variables
   ↓
 CLI arguments
 ```
+
+Profiles (e.g., `--profile developer`) apply role-based defaults on top of file config but beneath environment variables and CLI flags, allowing you to select a development posture without overriding explicit command-line choices.
 
 ### Configuration Example (`mini-agent.config.yaml`)
 ```yaml
@@ -208,7 +215,38 @@ quality_gates:
       required: true
     - id: optional-report
       required: false # A missing command is reported as skipped
+
+retry:
+  enabled: true
+  maxAttempts: 3                # Number of retry attempts for transient errors
+  initialDelayMs: 1000          # Initial backoff delay in milliseconds
+  backoffFactor: 2              # Exponential backoff multiplier (delay doubles each attempt)
+  maxDelayMs: 30000             # Maximum delay between retries (caps exponential growth)
 ```
+
+### Retry Policy
+
+By default, `mini-agent` automatically retries transient LLM errors with deterministic exponential backoff:
+
+- **Retryable errors** (transient): HTTP 408, 429 (rate limit), 500, 502, 503, 504, network timeouts and disconnects
+- **Non-retryable errors** (fail-fast): HTTP 400 (bad request), 401/403 (auth), 404 (not found), 413 (context length exceeded)
+- **Retry-After headers**: Respected for 429 and 503 responses via standard `Retry-After` header (seconds or HTTP-date) or non-standard `retry-after-ms` header (milliseconds), capped at `maxDelayMs`
+- **Exponential backoff**: `delay = Math.min(maxDelayMs, initialDelayMs * 2^(attempt-1))` with no jitter (deterministic for repeatability)
+  - Example with defaults (initial=1000ms, factor=2, max=30000ms):
+    - Attempt 1→2: 1000ms delay
+    - Attempt 2→3: 2000ms delay
+    - Attempt 3→4: 4000ms delay
+    - Attempt 4→5: 8000ms delay
+    - Attempt 5→6: 16000ms delay (capped at 30000ms max)
+- **Fallback models**: Used only for transient capacity errors (503); permanent errors fail immediately
+- **Signal-aware**: Cancellation signals interrupt retries and in-flight delays
+
+CLI flags:
+- `--retry` enables retry (default)
+- `--no-retry` disables retry (1 attempt per model)
+- `--retry-attempts <n>` overrides `maxAttempts` for this run
+
+Note: `--max-retries` is distinct and controls OpenSpec task retries on permanent failures.
 
 ### Quality Gates
 
@@ -226,6 +264,8 @@ Each gate uses a kebab-case `id`, optional display `name`, `command`, `required`
 | `MINI_AGENT_COST_TRACKING` | `false` | Enable/disable cost tracking (`true`/`false`) |
 | `MINI_AGENT_SKILLS_ENABLED` | `true` | Enable/disable skills discovery (`true`/`false`) |
 | `MINI_AGENT_SYSTEM_PROMPT_ENABLED` | `true` | Enable/disable standard system prompt (`true`/`false`) |
+| `MINI_AGENT_RETRY` | `true` | Enable/disable automatic retry on transient errors (`true`/`false`) |
+| `MINI_AGENT_RETRY_ATTEMPTS` | `3` | Max retry attempts on transient LLM errors |
 | `PROVIDER` | `router` | Default LLM provider (`router`, `openai`, `anthropic`, `google`, `zai`) |
 | `ZAI_API_KEY` | | API key for Z.AI |
 | `ZAI_BASE_URL` | `https://api.z.ai/api/coding/paas/v4` | Base URL for Z.AI Chat Completions API |
