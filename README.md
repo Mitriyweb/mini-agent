@@ -10,11 +10,13 @@ A lightweight, modular coding agent harness supporting multi-provider LLMs (**Mo
   - **Model Router** (default: `http://localhost:8787/v1` with `model-router-auto`).
   - **Direct Provider Mode**: Work directly with **OpenAI**, **Anthropic**, **Google Gemini**, **Z.AI**, or OpenAI-compatible endpoints bypassing `model-router`.
   - **Dynamic Model Discovery**: Fetches real available models directly from provider APIs.
+  - **Gzip Transport**: JSON request bodies are gzip-encoded (`Content-Encoding: gzip`) and `Accept-Encoding: gzip` is advertised on every provider call; gzip-encoded responses are transparently decompressed.
 - **TypeScript & ESM**: Fully typed codebase targeting Node.js >= 20 and Bun.
 - **Configurable Observability & Logging**:
   - `off`: Complete quiet execution.
   - `normal`: Standard workflow execution feedback.
   - `verbose`: Detailed debugging including prompt metadata, request duration, token usage, and skill resolution, with safe secret redaction.
+  - Errors are always echoed to the console (`stderr`) even when file logging is enabled, so failures are never silent.
 - **Independent Token & Cost Accounting**:
   - Collects token usage (input/prompt, output/completion, total).
   - Configurable pricing per 1 million tokens (global default or per-model).
