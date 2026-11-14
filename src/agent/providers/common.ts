@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import concolor from 'concolor';
 import type { LLMRequest, Provider, ProviderClientOptions, RetryConfig } from '../../types/llm.ts';
 import { validateRetryConfig } from '../config.ts';
+import { openAIProviderFetch } from './transport.ts';
 
 const color = (concolor as any)({
   warn: 'b,yellow',
@@ -311,7 +312,13 @@ export const createOpenAICompatibleClient = (
   const log = options.log ?? console.log;
 
   // Disable SDK internal retries; we handle retries deterministically
-  const client = new OpenAI({ apiKey, baseURL, maxRetries: 0, dangerouslyAllowBrowser: true });
+  const client = new OpenAI({
+    apiKey,
+    baseURL,
+    maxRetries: 0,
+    dangerouslyAllowBrowser: true,
+    fetch: openAIProviderFetch,
+  });
 
   return {
     get providerId() {

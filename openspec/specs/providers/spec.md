@@ -86,3 +86,25 @@ The provider infrastructure MUST classify errors using consistent transient/perm
 - **When** review request fails
 - **Then** the same provider error classification (transient vs permanent) is applied to decide retry behavior
 
+### Requirement: Gzip-Compress Provider Request Bodies
+Provider API requests with a body MUST send that body gzip-encoded and identify the encoding with the `Content-Encoding: gzip` header.
+
+#### Scenario: Completion request is sent with gzip encoding
+- **WHEN** a provider client sends a completion request with a JSON body
+- **THEN** the request body is gzip-encoded and the provider receives the original JSON after decompression
+
+#### Scenario: Bodyless provider request is sent
+- **WHEN** a provider client sends a request without a body
+- **THEN** it does not add a `Content-Encoding: gzip` header
+
+### Requirement: Transparently Handle Gzip Provider Responses
+Provider API requests MUST advertise support for gzip responses, and provider clients MUST transparently decode gzip-encoded responses before exposing them to callers.
+
+#### Scenario: Provider returns a gzip-encoded response
+- **WHEN** a provider API returns a response with `Content-Encoding: gzip`
+- **THEN** the response is decoded and its content is available to the provider client as the original uncompressed content
+
+#### Scenario: Provider returns an uncompressed response
+- **WHEN** a provider API returns a response without gzip encoding
+- **THEN** the provider client handles it without attempting gzip decompression
+

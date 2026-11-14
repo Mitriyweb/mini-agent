@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { createOpenAICompatibleClient } from './common.ts';
+import { openAIProviderFetch, providerFetch } from './transport.ts';
 import type { LLMProviderDefinition, ModelInfo, Provider, ProviderClientOptions } from './types.ts';
 
 export const anthropicProvider: LLMProviderDefinition = {
@@ -23,7 +24,7 @@ export const anthropicProvider: LLMProviderDefinition = {
 
     // Try Anthropic models API or OpenAI-compatible endpoint
     try {
-      const response = await fetch(`${baseURL}/models`, {
+      const response = await providerFetch(`${baseURL}/models`, {
         headers: {
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
@@ -47,7 +48,7 @@ export const anthropicProvider: LLMProviderDefinition = {
 
     // Fallback if endpoint is custom OpenAI-compatible proxy or unreachable
     try {
-      const client = new OpenAI({ apiKey, baseURL, dangerouslyAllowBrowser: true });
+      const client = new OpenAI({ apiKey, baseURL, dangerouslyAllowBrowser: true, fetch: openAIProviderFetch });
       const response = await client.models.list();
       const models: ModelInfo[] = [];
       for await (const model of response) {

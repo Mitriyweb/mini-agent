@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { createOpenAICompatibleClient } from './common.ts';
+import { openAIProviderFetch } from './transport.ts';
 import type { LLMProviderDefinition, ModelInfo, Provider, ProviderClientOptions } from './types.ts';
 
 export const routerProvider: LLMProviderDefinition = {
@@ -23,7 +24,7 @@ export const routerProvider: LLMProviderDefinition = {
     const apiKey = this.resolveApiKey(options.apiKey);
 
     try {
-      const client = new OpenAI({ apiKey, baseURL, dangerouslyAllowBrowser: true });
+      const client = new OpenAI({ apiKey, baseURL, dangerouslyAllowBrowser: true, fetch: openAIProviderFetch });
       const response = await client.models.list();
       const models: ModelInfo[] = [];
       for await (const model of response) {
