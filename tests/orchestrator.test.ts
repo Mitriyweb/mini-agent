@@ -225,6 +225,8 @@ describe('OpenSpec Orchestrator Test Suite', () => {
     expect(result.totalTasks).toBe(2);
     expect(result.completedTasks).toBe(2);
     expect(result.failedTasks).toBe(0);
+    expect(result.results[0].attempts).toBe(1);
+    expect(result.results[1].attempts).toBe(1);
     expect(executedTasks.length).toBe(2);
 
     const updatedTasksMd = fs.readFileSync(tasksPath, 'utf8');
@@ -264,6 +266,7 @@ describe('OpenSpec Orchestrator Test Suite', () => {
     expect(result.success).toBe(false);
     expect(result.completedTasks).toBe(0);
     expect(result.failedTasks).toBe(2);
+    expect(result.results[0].attempts).toBe(4);
     expect(attempts).toBe(4); // 1 initial attempt + 3 retries = 4 attempts
 
     const updatedTasksMd = fs.readFileSync(tasksPath, 'utf8');
@@ -305,6 +308,7 @@ describe('OpenSpec Orchestrator Test Suite', () => {
 
     expect(result.success).toBe(true);
     expect(result.completedTasks).toBe(1);
+    expect(result.results[0].attempts).toBe(2);
     expect(attempts).toBe(2);
 
     const updatedTasksMd = fs.readFileSync(tasksPath, 'utf8');
@@ -630,5 +634,24 @@ describe('OpenSpec Orchestrator Test Suite', () => {
     const result = await orchestrator.run();
     expect(runnerSignalReceived).toBe(true);
     expect(result.success).toBe(false);
+  });
+
+  it('26. Words with colons like Fix: or Add: are not misidentified as explicit task IDs', () => {
+    const markdown = `# Tasks
+- [ ] Fix: handle first bug
+- [ ] Fix: handle second bug
+- [ ] Add: support new format
+- [ ] TASK-1: explicit task identifier
+`;
+    const tasks = parseTasksMarkdown(markdown);
+    expect(tasks.length).toBe(4);
+    expect(tasks[0].id).toBe('task-1');
+    expect(tasks[0].description).toBe('Fix: handle first bug');
+    expect(tasks[1].id).toBe('task-2');
+    expect(tasks[1].description).toBe('Fix: handle second bug');
+    expect(tasks[2].id).toBe('task-3');
+    expect(tasks[2].description).toBe('Add: support new format');
+    expect(tasks[3].id).toBe('TASK-1');
+    expect(tasks[3].description).toBe('explicit task identifier');
   });
 });

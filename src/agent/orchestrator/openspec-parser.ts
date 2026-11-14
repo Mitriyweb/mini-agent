@@ -70,7 +70,7 @@ export const parseTasksMarkdown = (content: string): OpenSpecTask[] => {
         taskId = numHierarchicalMatch[1];
         desc = numHierarchicalMatch[2].trim();
       } else {
-        const idMatch = fullDescription.match(/^([a-zA-Z0-9_.-]+)[:.]\s+(.+)$/);
+        const idMatch = fullDescription.match(/^([a-zA-Z0-9_.-]*\d[a-zA-Z0-9_.-]*)[:.]\s+(.+)$/);
         if (idMatch) {
           taskId = idMatch[1];
           desc = idMatch[2].trim();
@@ -156,7 +156,7 @@ export const updateTaskInMarkdown = (
       if (numHierarchicalMatch) {
         currentId = numHierarchicalMatch[1];
       } else {
-        const idMatch = fullDescription.match(/^([a-zA-Z0-9_.-]+)[:.]\s+(.+)$/);
+        const idMatch = fullDescription.match(/^([a-zA-Z0-9_.-]*\d[a-zA-Z0-9_.-]*)[:.]\s+(.+)$/);
         if (idMatch) {
           currentId = idMatch[1];
         } else {
@@ -181,14 +181,10 @@ export const updateTaskInMarkdown = (
 
 /**
  * Finds the OpenSpec root directory in the workspace.
- * Defaults to `openspec` in workspaceRoot, or checks nearest parent.
+ * Defaults to `openspec` in workspaceRoot.
  */
 export const resolveOpenSpecDir = (workspaceRoot: string): string => {
-  const localOpenSpec = path.join(workspaceRoot, 'openspec');
-  if (fs.existsSync(localOpenSpec) && fs.statSync(localOpenSpec).isDirectory()) {
-    return localOpenSpec;
-  }
-  return localOpenSpec;
+  return path.join(workspaceRoot, 'openspec');
 };
 
 /**
@@ -278,6 +274,7 @@ export const loadOpenSpecChange = async (
 
   const loadSpecsFromDir = async (dir: string, prefix = '') => {
     if (!fs.existsSync(dir)) return;
+    const realDir = fs.realpathSync(dir);
     const entries = await fs.promises.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
@@ -286,6 +283,9 @@ export const loadOpenSpecChange = async (
         await loadSpecsFromDir(fullPath, relative);
       } else if (entry.isFile() && (entry.name.endsWith('.md') || entry.name.endsWith('.yaml') || entry.name.endsWith('.json'))) {
         try {
+          const realFile = fs.realpathSync(fullPath);
+          const rel = path.relative(realDir, realFile);
+          if (rel.startsWith('..') || path.isAbsolute(rel)) continue;
           specs[relative] = await fs.promises.readFile(fullPath, 'utf8');
         } catch {
           // ignore unreadable files
@@ -311,7 +311,11 @@ export const loadOpenSpecChange = async (
       entry.name !== 'design.md'
     ) {
       try {
-        otherFiles[entry.name] = await fs.promises.readFile(path.join(changeDir, entry.name), 'utf8');
+        const fullPath = path.join(changeDir, entry.name);
+        const realFile = fs.realpathSync(fullPath);
+        const rel = path.relative(realChangeDir, realFile);
+        if (rel.startsWith('..') || path.isAbsolute(rel)) continue;
+        otherFiles[entry.name] = await fs.promises.readFile(fullPath, 'utf8');
       } catch {
         // ignore
       }

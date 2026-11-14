@@ -507,6 +507,7 @@ export const main = async () => {
       return;
     }
 
+    removeInterruptHandler();
     const abortController = new AbortController();
     const removeApplyInterruptHandler = installInterruptHandler(() => {
       abortController.abort();
@@ -524,7 +525,7 @@ export const main = async () => {
         maxStepsPerTask: resolvedConfig.maxSteps ?? options.maxSteps,
         onEvent,
         workflows,
-        skills: allSkills,
+        skills: filteredSkills,
         logging: resolvedConfig.logging,
         costTracking: resolvedConfig.costTracking,
         skillsConfig: resolvedConfig.skills,
@@ -548,7 +549,6 @@ export const main = async () => {
       process.exitCode = 1;
     } finally {
       removeApplyInterruptHandler();
-      removeInterruptHandler();
       permissions.close();
     }
     return;
@@ -661,6 +661,8 @@ export const main = async () => {
     }
     return;
   }
+
+  removeInterruptHandler();
 
   // Interactive REPL mode
   const completer = createCompleter({

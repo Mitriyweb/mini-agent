@@ -1,12 +1,9 @@
 {
   "name": "mini-agent",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "private": true,
   "description": "A small modular coding agent harness compatible with model-router.",
   "type": "module",
-  "engines": {
-    "node": ">=20"
-  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {

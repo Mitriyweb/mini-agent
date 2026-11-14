@@ -101,7 +101,7 @@ export const buildTaskPrompt = (options: TaskPromptOptions): string => {
 
   // 6. Full Task Checklist for Context & Progress Awareness
   const checklistLines = allTasks.map((t) => {
-    const mark = t.completed ? 'x' : t.id === currentTask.id ? ' ' : ' ';
+    const mark = t.completed ? 'x' : ' ';
     const currentIndicator = t.id === currentTask.id ? ' <-- [CURRENT TASK]' : '';
     return `- [${mark}] ${t.id}: ${t.description}${currentIndicator}`;
   });

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import concolor from 'concolor';
 import { runAgent } from '../agent.ts';
-import { executeQualityGates, formatQualityGateResults, hasRequiredGateFailure, type QualityGateResult } from '../quality-gates.ts';
+import { formatQualityGateResults, hasRequiredGateFailure, type QualityGateResult } from '../quality-gates.ts';
 import { DurableRun } from '../run-state.ts';
 import type { AgentEvent, AgentOptions } from '../../types/agent.ts';
 import {
@@ -225,6 +225,9 @@ export class OpenSpecOrchestrator {
         // Step 6: Validate result using qualityGateResults returned directly by runAgent
         let gatesPassed = true;
         let qualityGateResults: QualityGateResult[] = agentResult?.qualityGateResults ?? [];
+        if (!agentResult && durableRun?.state.qualityGateResults) {
+          qualityGateResults = durableRun.state.qualityGateResults;
+        }
         lastGateResults = qualityGateResults;
 
         if (!agentError) {
@@ -237,6 +240,9 @@ export class OpenSpecOrchestrator {
           }
         } else {
           lastError = agentError instanceof Error ? agentError.message : String(agentError);
+          if (hasRequiredGateFailure(qualityGateResults)) {
+            gateFailuresText = formatQualityGateResults(qualityGateResults);
+          }
           console.log(color.error(`Agent execution failed: ${lastError}`));
         }
 
@@ -272,10 +278,16 @@ export class OpenSpecOrchestrator {
         }
       }
 
+      const executedAttempts = taskSuccess
+        ? attempt
+        : this.interrupted
+          ? attempt
+          : maxAttempts;
+
       executionResults.push({
         taskId: nextTask.id,
         success: taskSuccess,
-        attempts: Math.min(attempt - 1, maxAttempts),
+        attempts: executedAttempts,
         error: taskSuccess ? undefined : (lastError || gateFailuresText),
         qualityGateResults: lastGateResults,
       });
