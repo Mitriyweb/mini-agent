@@ -1,10 +1,10 @@
 # OpenSpec: Providers Domain Specification
 
 ## Purpose
-Manage LLM completion endpoints, provider registry, and client generation with deterministic retry policies for transient errors, fail-fast semantics for permanent errors, and signal-aware cancellation.
+Manage LLM completion endpoints, provider registry, and client generation with deterministic retry policies for transient errors, fail-fast semantics for permanent errors, signal-aware cancellation, and external review interface.
 
 ## Overview
-The `providers` domain manages LLM completion endpoints, ProviderRegistry, and client generation (`router`, `openai`, `anthropic`, `google`) with deterministic retry policies for transient errors.
+The `providers` domain manages LLM completion endpoints, ProviderRegistry, and client generation (`router`, `openai`, `anthropic`, `google`) with deterministic retry policies for transient errors, and supports external review execution in a separate context.
 
 ## Requirements
 
@@ -77,4 +77,12 @@ The LLM provider client MUST propagate AbortSignal to both active HTTP completio
 - **Given** an active retry backoff sleep
 - **When** the AbortSignal is triggered
 - **THEN** the delay is cancelled immediately and an abort error is raised without completing remaining retries
+
+### Requirement: Provider Error Classification for External Review
+The provider infrastructure MUST classify errors using consistent transient/permanent categorization to enable reuse of retry logic in external review execution.
+
+#### Scenario: Review retry uses provider classification
+- **Given** external review execution with retry-on-transient policy
+- **When** review request fails
+- **Then** the same provider error classification (transient vs permanent) is applied to decide retry behavior
 

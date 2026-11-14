@@ -40,6 +40,7 @@ export interface OrchestratorOptions {
   logger?: AgentOptions['logger'];
   usageTracker?: AgentOptions['usageTracker'];
   qualityGates?: AgentOptions['qualityGates'];
+  review?: AgentOptions['review'];
   signal?: AbortSignal;
   /** Optional runner override for tests/mocks */
   agentRunner?: (options: AgentOptions) => Promise<any>;
@@ -216,6 +217,7 @@ export class OpenSpecOrchestrator {
             usageTracker: this.options.usageTracker,
             durableRun,
             qualityGates: this.options.qualityGates,
+            review: this.options.review,
             signal: this.options.signal,
           });
         } catch (err) {
@@ -246,7 +248,15 @@ export class OpenSpecOrchestrator {
           console.log(color.error(`Agent execution failed: ${lastError}`));
         }
 
-        if (!agentError && gatesPassed) {
+        const reviewOutcome = agentResult?.reviewOutcome;
+        if (reviewOutcome && reviewOutcome.verdict !== 'pass') {
+          taskSuccess = false;
+          console.log(color.error(`Review verdict: ${reviewOutcome.verdict}`));
+          console.log(color.error(reviewOutcome.findings));
+          lastError = `Review verdict: ${reviewOutcome.verdict} - ${reviewOutcome.findings}`;
+        }
+
+        if (!agentError && gatesPassed && (!reviewOutcome || reviewOutcome.verdict === 'pass')) {
           // Success!
           taskSuccess = true;
           console.log(color.success(`Task completed\n`));

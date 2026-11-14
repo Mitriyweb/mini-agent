@@ -5,8 +5,14 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat/completio
 import { redactSecrets, AuditLogger } from './logging.ts';
 import type { UsageSummary } from './usage-tracker.ts';
 import type { QualityGateResult } from './quality-gates.ts';
+import type { ReviewResult } from './review-types.ts';
 
-export type RunStatus = 'running' | 'interrupted' | 'failed' | 'completed';
+export enum RunStatus {
+  RUNNING = 'running',
+  INTERRUPTED = 'interrupted',
+  FAILED = 'failed',
+  COMPLETED = 'completed',
+}
 
 export interface CompletedToolCall {
   id: string;
@@ -28,6 +34,8 @@ export interface RunState {
   qualityGateResults?: QualityGateResult[];
   usageSummary?: UsageSummary;
   error?: string;
+  // External review fields
+  review?: ReviewResult;
 }
 
 const stateFileName = 'state.json';
@@ -53,7 +61,7 @@ export class DurableRun {
       id,
       task: safe(task),
       workspace: path.resolve(workspace),
-      status: 'running',
+      status: RunStatus.RUNNING,
       createdAt: now,
       updatedAt: now,
       currentStep: 0,
@@ -91,16 +99,17 @@ export class DurableRun {
 
   private static isValidState(value: unknown, runId: string, workspace: string): value is RunState {
     const state = value as Partial<RunState> | null;
+    const validStatuses = Object.values(RunStatus);
     return Boolean(
       state && state.version === 1 && state.id === runId && state.workspace === path.resolve(workspace) &&
-      typeof state.task === 'string' && ['running', 'interrupted', 'failed', 'completed'].includes(state.status as string) &&
+      typeof state.task === 'string' && validStatuses.includes(state.status as RunStatus) &&
       Array.isArray(state.messages) && Array.isArray(state.completedToolCalls) &&
       typeof state.currentStep === 'number' && typeof state.lastEventPosition === 'number',
     );
   }
 
   public resume(): void {
-    this.state.status = 'running';
+    this.state.status = RunStatus.RUNNING;
     delete this.state.error;
     new AuditLogger(this.state.workspace).logEvent(this.state.id, 'run_resume', { task: this.state.task });
     this.persist('resumed');
@@ -123,28 +132,45 @@ export class DurableRun {
     return this.state.completedToolCalls.find((call) => call.id === id)?.output;
   }
 
-  public complete(messages: ChatCompletionMessageParam[], metadata: { qualityGateResults?: QualityGateResult[]; usageSummary?: UsageSummary } = {}): void {
-    this.state.status = 'completed';
+  public complete(
+    messages: ChatCompletionMessageParam[],
+    metadata: {
+      qualityGateResults?: QualityGateResult[];
+      usageSummary?: UsageSummary;
+      reviewResult?: ReviewResult;
+    } = {},
+  ): void {
+    this.state.status = RunStatus.COMPLETED;
     this.state.messages = safe(messages);
     this.state.qualityGateResults = safe(metadata.qualityGateResults);
     this.state.usageSummary = safe(metadata.usageSummary);
+    this.state.review = safe(metadata.reviewResult);
     new AuditLogger(this.state.workspace).logEvent(this.state.id, 'run_complete', metadata);
     this.persist('completed');
   }
 
-  public fail(error: unknown, messages: ChatCompletionMessageParam[], metadata: { qualityGateResults?: QualityGateResult[]; usageSummary?: UsageSummary } = {}): void {
-    this.state.status = 'failed';
+  public fail(
+    error: unknown,
+    messages: ChatCompletionMessageParam[],
+    metadata: {
+      qualityGateResults?: QualityGateResult[];
+      usageSummary?: UsageSummary;
+      reviewResult?: ReviewResult;
+    } = {},
+  ): void {
+    this.state.status = RunStatus.FAILED;
     this.state.error = safe(error instanceof Error ? error.message : String(error));
     this.state.messages = safe(messages);
     this.state.qualityGateResults = safe(metadata.qualityGateResults);
     this.state.usageSummary = safe(metadata.usageSummary);
+    this.state.review = safe(metadata.reviewResult);
     new AuditLogger(this.state.workspace).logEvent(this.state.id, 'run_fail', { error: this.state.error, ...metadata });
     this.persist('failed', { error: this.state.error });
   }
 
   public interrupt(): void {
-    if (this.state.status !== 'running') return;
-    this.state.status = 'interrupted';
+    if (this.state.status !== RunStatus.RUNNING) return;
+    this.state.status = RunStatus.INTERRUPTED;
     new AuditLogger(this.state.workspace).logEvent(this.state.id, 'run_interrupt', {});
     this.persist('interrupted');
   }
@@ -153,7 +179,7 @@ export class DurableRun {
     this.state.updatedAt = new Date().toISOString();
     this.writeState();
     this.appendEvent(type, data);
-    if (this.state.status !== 'running') this.writeReports();
+    if (this.state.status !== RunStatus.RUNNING) this.writeReports();
   }
 
   private writeReports(): void {
@@ -171,6 +197,12 @@ export class DurableRun {
         filesChanged: [],
         qualityGates: this.state.qualityGateResults ?? [],
         usage: this.state.usageSummary ?? null,
+        review: this.state.review
+          ? {
+              verdict: this.state.review.verdict,
+              executedAt: this.state.review.executedAt,
+            }
+          : null,
         error: this.state.error ?? null,
       });
       fs.writeFileSync(path.join(this.directory, 'result.json'), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
@@ -182,6 +214,17 @@ export class DurableRun {
       const usageLines = usage
         ? [`- Requests: ${usage.requests}`, `- Tokens: ${usage.totalTokens}`, `- Estimated cost: ${usage.currency} ${usage.estimatedCost}`]
         : ['- Usage data unavailable.'];
+      const reviewLines = this.state.review
+        ? [
+            `## Review`,
+            `- **Verdict:** ${this.state.review.verdict}`,
+            `- **Executed:** ${this.state.review.executedAt}`,
+            ``,
+            `### Findings`,
+            this.state.review.findings,
+            ``,
+          ]
+        : [];
       const report = [
         '# Run Report',
         '',
@@ -197,6 +240,7 @@ export class DurableRun {
         '## Quality Gates',
         ...gateLines,
         '',
+        ...reviewLines,
         '## Usage',
         ...usageLines,
         ...(this.state.error ? ['', '## Error', this.state.error] : []),

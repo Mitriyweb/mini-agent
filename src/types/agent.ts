@@ -9,6 +9,8 @@ import type { SkillsConfig } from '../agent/skills.ts';
 import type { SystemPromptConfig } from '../agent/system-prompt.ts';
 import type { DurableRun } from '../agent/run-state.ts';
 import type { QualityGateResult, QualityGatesConfig } from '../agent/quality-gates.ts';
+import type { ReviewConfig } from '../agent/review-orchestrator.ts';
+import { ReviewResultStatus, ReviewVerdict } from '../agent/review-types.ts';
 
 export enum AgentResultStatus {
   OK = 'ok',
@@ -21,7 +23,9 @@ export type AgentEvent =
   | { type: 'tool'; name: string; args: unknown; argsText: string }
   | { type: 'result'; name: string; args: unknown; status: AgentResultStatus; preview: string }
   | { type: 'assistant'; text: string }
-  | { type: 'quality-gates'; results: QualityGateResult[] };
+  | { type: 'quality-gates'; results: QualityGateResult[] }
+  | { type: 'review-start'; runId: string }
+  | { type: 'review-complete'; verdict: string; findings: string };
 
 export interface AgentOptions {
   task: string;
@@ -44,6 +48,7 @@ export interface AgentOptions {
   usageTracker?: UsageTracker;
   durableRun?: DurableRun;
   qualityGates?: QualityGatesConfig;
+  review?: ReviewConfig;
   signal?: AbortSignal;
 }
 
@@ -53,4 +58,9 @@ export interface AgentResult {
   usageSummary?: UsageSummary;
   usageTracker?: UsageTracker;
   qualityGateResults?: QualityGateResult[];
+  reviewOutcome?: {
+    verdict: ReviewVerdict;
+    findings: string;
+    status?: ReviewResultStatus;
+  };
 }

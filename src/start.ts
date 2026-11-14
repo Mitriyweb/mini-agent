@@ -39,6 +39,7 @@ export enum ParsedCommand {
   Run = 'run',
   Resume = 'resume',
   Apply = 'apply',
+  Review = 'review',
 }
 
 export interface ParsedCLIOptions {
@@ -57,6 +58,8 @@ export interface ParsedCLIOptions {
   maxRetries?: number;
   retryEnabled?: boolean;
   retryAttempts?: number;
+  reviewEnabled?: boolean;
+  reviewAuthorizedProvider?: string;
   logLevel?: LogLevel;
   costTracking?: boolean;
   skillsEnabled?: boolean;
@@ -77,6 +80,7 @@ Usage:
   mini-agent run [options] "task..."
   mini-agent resume [options] <run-id>
   mini-agent apply [options] <change-name>
+  mini-agent review [options] <run-id>
   mini-agent memory show
   mini-agent memory add "new knowledge"
 
@@ -108,6 +112,9 @@ Common options:
   --system-prompt             Enable standard built-in system prompt (default)
   --no-system-prompt          Disable standard built-in system prompt
   --config <path>             Path to configuration YAML/JSON file
+  --review                    Enable external review for the current run
+  --no-review                 Disable external review for the current run
+  --review-provider <id>      Provider to use for external review (e.g. openai, anthropic)
   --profile <name>            Apply a named role profile (default, planner, developer, reviewer, qa)
   -v, --version               Show the installed version
   -h, --help                  Show this help text
@@ -152,6 +159,10 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         'system-prompt': { type: 'boolean', default: undefined },
         'no-system-prompt': { type: 'boolean', default: false },
         config: { type: 'string' },
+        review: { type: 'boolean', default: undefined },
+        'no-review': { type: 'boolean', default: false },
+        'review-provider': { type: 'string' },
+        'review-authorized-provider': { type: 'string' },
         profile: { type: 'string' },
         version: { type: 'boolean', short: 'v', default: false },
         help: { type: 'boolean', short: 'h', default: false },
@@ -226,6 +237,12 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
 
     const configPath = parsed.values.config as string | undefined;
     const profile = (parsed.values as Record<string, unknown>).profile as string | undefined;
+    const reviewEnabled = parsed.values.review === true ? true : parsed.values['no-review'] === true ? false : undefined;
+    const reviewAuthorizedProvider =
+      (parsed.values['review-provider'] as string | undefined) ??
+      (parsed.values['review-authorized-provider'] as string | undefined) ??
+      process.env.MINI_AGENT_EXTERNAL_REVIEW_PROVIDER ??
+      process.env.EXTERNAL_REVIEW_PROVIDER;
 
     let workspaceDir = (parsed.values.dir as string | undefined) || process.cwd();
     const positionals = parsed.positionals;
@@ -245,10 +262,10 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       }
     }
 
-    const command = taskParts[0] === ParsedCommand.Run || taskParts[0] === ParsedCommand.Resume || taskParts[0] === ParsedCommand.Apply
+    const command = taskParts[0] === ParsedCommand.Run || taskParts[0] === ParsedCommand.Resume || taskParts[0] === ParsedCommand.Apply || taskParts[0] === ParsedCommand.Review
       ? taskParts.shift() as ParsedCommand
       : undefined;
-    const runId = command === ParsedCommand.Resume ? taskParts.shift() : undefined;
+    const runId = command === ParsedCommand.Resume || command === ParsedCommand.Review ? taskParts.shift() : undefined;
     const changeName = command === ParsedCommand.Apply ? taskParts.shift() : undefined;
     return {
       autoApprove,
@@ -273,6 +290,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       systemPromptEnabled,
       configPath,
       profile,
+      reviewEnabled,
+      reviewAuthorizedProvider,
     };
   } catch {
     // Fallback manual parsing
@@ -294,6 +313,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     let systemPromptEnabled: boolean | undefined;
     let configPath: string | undefined;
     let profile: string | undefined;
+    let reviewEnabled: boolean | undefined;
+    let reviewAuthorizedProvider: string | undefined;
     const taskParts: string[] = [];
 
     for (let i = 0; i < args.length; i++) {
@@ -342,6 +363,12 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         systemPromptEnabled = false;
       } else if (arg === '--config' && i + 1 < args.length) {
         configPath = args[++i];
+      } else if (arg === '--review') {
+        reviewEnabled = true;
+      } else if (arg === '--no-review') {
+        reviewEnabled = false;
+      } else if ((arg === '--review-provider' || arg === '--review-authorized-provider') && i + 1 < args.length) {
+        reviewAuthorizedProvider = args[++i];
       } else if (arg === '--profile' && i + 1 < args.length) {
         profile = args[++i];
       } else if (
@@ -356,10 +383,10 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       }
     }
 
-    const command = taskParts[0] === ParsedCommand.Run || taskParts[0] === ParsedCommand.Resume || taskParts[0] === ParsedCommand.Apply
+    const command = taskParts[0] === ParsedCommand.Run || taskParts[0] === ParsedCommand.Resume || taskParts[0] === ParsedCommand.Apply || taskParts[0] === ParsedCommand.Review
       ? taskParts.shift() as ParsedCommand
       : undefined;
-    const runId = command === ParsedCommand.Resume ? taskParts.shift() : undefined;
+    const runId = command === ParsedCommand.Resume || command === ParsedCommand.Review ? taskParts.shift() : undefined;
     const changeName = command === ParsedCommand.Apply ? taskParts.shift() : undefined;
     return {
       autoApprove,
@@ -384,6 +411,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       systemPromptEnabled,
       configPath,
       profile,
+      reviewEnabled,
+      reviewAuthorizedProvider,
     };
   }
 };
@@ -479,6 +508,13 @@ export const main = async () => {
         ? {
             enabled: options.retryEnabled,
             maxAttempts: options.retryAttempts,
+          }
+        : undefined,
+    review:
+      options.reviewEnabled !== undefined || options.reviewAuthorizedProvider !== undefined
+        ? {
+            enabled: options.reviewEnabled ?? false,
+            authorizedProvider: options.reviewAuthorizedProvider,
           }
         : undefined,
     provider: options.customProvider,
@@ -578,6 +614,7 @@ export const main = async () => {
         logger,
         usageTracker,
         qualityGates: resolvedConfig.qualityGates,
+        review: resolvedConfig.review,
         signal: abortController.signal,
       });
 
@@ -594,6 +631,38 @@ export const main = async () => {
       process.exitCode = 1;
     } finally {
       removeApplyInterruptHandler();
+      permissions.close();
+    }
+    return;
+  }
+
+  if (options.command === ParsedCommand.Review) {
+    if (!options.runId) {
+      console.error(color.error('Usage: mini-agent review <run-id>'));
+      removeInterruptHandler();
+      permissions.close();
+      process.exitCode = 1;
+      return;
+    }
+
+    try {
+      const run = DurableRun.load(workspace.root, options.runId);
+      const review = run.state.review;
+      if (!review) {
+        console.error(color.error(`Run '${options.runId}' has no external review result.`));
+        process.exitCode = 1;
+      } else {
+        console.log(color.cyan(`Review verdict: ${review.verdict}`));
+        console.log(review.findings || 'No findings reported.');
+        if (review.verdict !== 'pass') {
+          process.exitCode = 1;
+        }
+      }
+    } catch (err) {
+      logger.logError('Review lookup failed', err);
+      process.exitCode = 1;
+    } finally {
+      removeInterruptHandler();
       permissions.close();
     }
     return;
@@ -671,7 +740,7 @@ export const main = async () => {
     }
     try {
       const usageTracker = new UsageTracker(resolvedConfig.costTracking);
-      await runAgent({
+      const result = await runAgent({
         task: taskText,
         provider,
         permissions,
@@ -688,10 +757,22 @@ export const main = async () => {
         usageTracker,
         durableRun,
         qualityGates: resolvedConfig.qualityGates,
+        review: resolvedConfig.review,
       });
 
+      const reviewFailed = result.reviewOutcome && result.reviewOutcome.verdict !== 'pass';
       if (!logger.isOff()) {
-        console.log(color.success('\nTask completed successfully.'));
+        if (reviewFailed) {
+          console.log(color.error(`\nReview verdict: ${result.reviewOutcome!.verdict}`));
+          console.log(color.error(result.reviewOutcome!.findings));
+          console.log(color.error('Task completed with a failing external review.'));
+        } else {
+          console.log(color.success('\nTask completed successfully.'));
+        }
+      }
+
+      if (reviewFailed) {
+        process.exitCode = 1;
       }
 
       if (resolvedConfig.costTracking.enabled) {

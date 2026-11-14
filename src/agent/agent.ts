@@ -23,6 +23,11 @@ import { UsageTracker, type CostTrackingConfig } from './usage-tracker.ts';
 import { filterSkills } from './skills.ts';
 import { resolveSystemPrompt } from './system-prompt.ts';
 import { executeQualityGates, formatQualityGateResults, hasRequiredGateFailure, type QualityGateResult } from './quality-gates.ts';
+import { ReviewOrchestrator, type ReviewConfig } from './review-orchestrator.ts';
+import { executeReview, MalformedReviewResponseError } from './review-provider.ts';
+import { createProvider } from './llm.ts';
+import { defaultProviderRegistry } from './providers/registry.ts';
+import { ReviewVerdict, ReviewResultStatus, BaselineType, ExecutionStatus } from './review-types.ts';
 
 const MAX_RESULT_CHARS = 60_000;
 const LOG_RESULT_CHARS = 4_000;
@@ -206,6 +211,10 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
 
   const runId = durableRun?.state.id ?? randomUUID();
   const auditLogger = new AuditLogger(workspace.root);
+  let reviewBaseline: { type: BaselineType; ref?: string; timestamp: string } | undefined;
+  if (options.review?.enabled && options.review.authorizedProvider) {
+    reviewBaseline = new ReviewOrchestrator(workspace, options.review).captureBaseline();
+  }
 
   const emit = async (type: AgentEvent['type'], data = {}) => {
     if (type === 'tool') {
@@ -287,14 +296,135 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
         });
         continue;
       }
-      durableRun?.complete(messages, { qualityGateResults, usageSummary: usageTracker.getSummary() });
-      return {
+
+      // Execute external review if enabled (before finalization)
+      const reviewConfig = options.review ?? { enabled: false };
+      let reviewOutcome: { verdict: ReviewVerdict; findings: string; status?: ReviewResultStatus } | undefined;
+
+      if (reviewConfig.enabled && reviewConfig.authorizedProvider) {
+        try {
+          const orchestrator = new ReviewOrchestrator(workspace, reviewConfig);
+          const reviewProviderId = reviewConfig.authorizedProvider.trim();
+          orchestrator.validateAuthorization(provider.providerId, {
+            has: (id) => defaultProviderRegistry.has(id) || id.toLowerCase() === provider.providerId.toLowerCase(),
+          });
+
+          const requestBaseline = reviewBaseline ?? orchestrator.captureBaseline();
+          reviewBaseline = requestBaseline;
+
+          const reviewRequest = orchestrator.buildReviewRequest(
+            runId,
+            task,
+            requestBaseline,
+            {
+              status: ExecutionStatus.COMPLETED,
+              stepsCompleted: step,
+              toolsUsed: registry.definitions().map((t) => t.function.name),
+              messageCount: messages.length,
+              updatedAt: new Date().toISOString(),
+            },
+          );
+
+          if (reviewRequest.evidenceInconclusive || reviewRequest.diffTruncated) {
+            const failedReview = {
+              verdict: ReviewVerdict.HUMAN_REVIEW_NEEDED,
+              findings: reviewRequest.evidenceInconclusive
+                ? 'External review evidence is incomplete or unavailable; failing closed.'
+                : 'External review diff was truncated; failing closed.',
+              executedAt: new Date().toISOString(),
+              baselineSnapshot: requestBaseline || { type: BaselineType.CREATION_STATE, timestamp: new Date().toISOString() },
+              status: ReviewResultStatus.INCOMPLETE_EVIDENCE,
+            };
+            if (durableRun) {
+              durableRun.state.review = failedReview;
+            }
+            reviewOutcome = { verdict: failedReview.verdict, findings: failedReview.findings, status: failedReview.status };
+            await emit('review-complete', {
+              verdict: failedReview.verdict,
+              findings: failedReview.findings,
+            });
+          } else {
+            await emit('review-start', { runId });
+
+            const reviewProvider = createProvider({
+              provider: reviewProviderId,
+              retry: reviewConfig.retries,
+            });
+            const reviewResponse = await executeReview(
+              reviewProvider,
+              reviewRequest,
+              signal,
+            );
+            const reviewResult = orchestrator.resultFromResponse(reviewResponse, requestBaseline);
+            reviewResult.status = ReviewResultStatus.SUCCESS;
+
+            reviewOutcome = { verdict: reviewResult.verdict, findings: reviewResult.findings, status: reviewResult.status };
+
+            await emit('review-complete', {
+              verdict: reviewResult.verdict,
+              findings: reviewResult.findings,
+            });
+
+            if (durableRun) {
+              durableRun.state.review = reviewResult;
+            }
+          }
+        } catch (error) {
+          logger.logError('Review execution failed', error);
+          const message = error instanceof Error ? error.message : String(error);
+          const isMalformed = error instanceof MalformedReviewResponseError;
+
+          const failedReview = {
+            verdict: ReviewVerdict.HUMAN_REVIEW_NEEDED,
+            findings: `Review execution error (${isMalformed ? 'malformed response' : 'provider failure'}): ${message}`,
+            executedAt: new Date().toISOString(),
+            baselineSnapshot: reviewBaseline || { type: BaselineType.CREATION_STATE, timestamp: new Date().toISOString() },
+            status: isMalformed ? ReviewResultStatus.MALFORMED_RESPONSE : ReviewResultStatus.PROVIDER_FAILURE,
+          };
+          if (durableRun) {
+            durableRun.state.review = failedReview;
+          }
+          reviewOutcome = { verdict: failedReview.verdict, findings: failedReview.findings, status: failedReview.status };
+
+          await emit('review-complete', {
+            verdict: failedReview.verdict,
+            findings: failedReview.findings,
+          });
+        }
+      }
+
+      // Determine if run should finalize as complete or incomplete based on review verdict
+      const isSuccess = !reviewOutcome || reviewOutcome.verdict === ReviewVerdict.PASS;
+
+      if (isSuccess) {
+        durableRun?.complete(messages, {
+          qualityGateResults,
+          usageSummary: usageTracker.getSummary(),
+          reviewResult: durableRun?.state.review,
+        });
+      } else {
+        // Non-pass verdict: mark as failed/incomplete
+        const errorMsg = reviewOutcome
+          ? `Review verdict: ${reviewOutcome.verdict} - ${reviewOutcome.findings}`
+          : 'Review execution failed';
+        durableRun?.fail(new Error(errorMsg), messages, {
+          qualityGateResults,
+          usageSummary: usageTracker.getSummary(),
+          reviewResult: durableRun?.state.review,
+        });
+      }
+
+      // Return result with review outcome (caller decides completion based on verdict)
+      const result: AgentResult = {
         text: finalText,
         messages,
         usageSummary: usageTracker.getSummary(),
         usageTracker,
         qualityGateResults,
+        reviewOutcome,
       };
+
+      return result;
     }
     if (text) await emit('assistant', { text });
 
@@ -315,7 +445,11 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
 
     throw new Error(`Agent exceeded the maximum of ${maxSteps} steps.`);
   } catch (error) {
-    durableRun?.fail(error, messages, { qualityGateResults: lastQualityGateResults, usageSummary: usageTracker.getSummary() });
+    durableRun?.fail(error, messages, {
+      qualityGateResults: lastQualityGateResults,
+      usageSummary: usageTracker.getSummary(),
+      reviewResult: durableRun?.state.review,
+    });
     throw error;
   }
 };

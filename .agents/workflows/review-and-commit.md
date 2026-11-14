@@ -6,16 +6,28 @@ description: Review code changes and create a commit following mini-agent reposi
 
 Review changed code for quality, correctness, security containment, and compliance with `mini-agent` standards, then commit if all checks pass.
 
-## Phase 0: Detect Changes
+## Phase 0: Cheap Preflight (no tokens)
+
+Run the repository preflight before any expensive review step:
 
 ```bash
-git status
-git diff --name-only
-git diff --stat
+bun run review:preflight
 ```
 
+This script performs the zero-token checks that can be automated locally:
+- `git status --short`
+- `git diff HEAD --name-only`
+- `git diff HEAD --stat`
+- `git diff HEAD --check` for whitespace/syntax-ish patch faults
+- `bun x tsc --noEmit`
+- Biome lint on changed tracked and untracked files
+
+If this step fails, fix the issues before spending any model tokens on additional review.
+
+Then, if a review is still required, limit the model pass to only the files and issues that remain. Do not ask the model to review the entire repo again when the preflight already proved the change set is clean.
+
 1. Identify all changed files (`.ts`, `.json`, `.md`)
-2. Read full content of each changed file
+2. Read only the relevant changed files and the exact failure output from the preflight
 3. Categorize by type and verify specific rules:
    - **Core Engine & Tools (`src/agent/*.ts`, `src/tools/**/*.ts`, `src/start.ts`)**:
      - TypeScript + ESM conventions: use `import`/`export`, prefer typed interfaces, and keep implementations in `src/`.
@@ -41,19 +53,17 @@ For each changed file, check for violations and categorize:
 
 If critical or high issues are found -> fix them before proceeding.
 
-Before staging files, ask the user explicitly:
+Before staging files, ask the user explicitly whether they want a release step after the normal commit.
 
-> Increase the package version and publish a tag/release for this commit? If yes, choose `patch`, `minor`, or `major`.
+> Publish a release/tag for this commit? If yes, choose `patch`, `minor`, or `major`.
 
-Do not bump the version, create a tag, push, or create a release without an explicit user approval. If approved, run the matching command before validation:
+Only do this with explicit approval. If approved, run the release command:
 
 ```bash
 bun run release -- patch
 ```
 
-Replace `patch` with the approved level. This command updates `package.json`, runs `bun run verify`, creates the version commit and tag, pushes both, and creates the GitHub Release. The existing release workflow then uploads the platform binaries automatically.
-
-If the user declines, create only the normal commit and do not create tags or releases.
+Use the selected bump level instead of `patch`. Otherwise, skip release and create only the regular commit.
 
 ### Run Validation Pipeline
 

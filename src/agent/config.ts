@@ -6,6 +6,7 @@ import type { CostTrackingConfig, ModelPricing } from './usage-tracker.ts';
 import type { SkillsConfig } from './skills.ts';
 import type { SystemPromptConfig } from './system-prompt.ts';
 import type { RetryConfig } from '../types/llm.ts';
+import type { ReviewConfig } from './review-orchestrator.ts';
 import { normalizeQualityGatesConfig, type QualityGatesConfig } from './quality-gates.ts';
 import { resolveProfile } from './profiles.ts';
 
@@ -46,6 +47,33 @@ export const validateRetryConfig = (config: Partial<RetryConfig>): void => {
     }
     if (config.initialDelayMs !== undefined && config.maxDelayMs < config.initialDelayMs) {
       throw new Error(`retry.maxDelayMs (${config.maxDelayMs}) cannot be less than retry.initialDelayMs (${config.initialDelayMs})`);
+    }
+  }
+};
+
+export const validateReviewConfig = (config: Partial<ReviewConfig>): void => {
+  if (config.enabled === true && !config.authorizedProvider) {
+    throw new Error('review.authorizedProvider must be configured when review is enabled');
+  }
+  if (config.authorizedProvider !== undefined && typeof config.authorizedProvider !== 'string') {
+    throw new Error(`review.authorizedProvider must be a string, got: ${typeof config.authorizedProvider}`);
+  }
+  if (config.authorizedProvider && config.authorizedProvider.trim().length === 0) {
+    throw new Error('review.authorizedProvider cannot be an empty string');
+  }
+  if (config.retries?.maxAttempts !== undefined) {
+    if (!Number.isInteger(config.retries.maxAttempts) || config.retries.maxAttempts < 1) {
+      throw new Error(`review.retries.maxAttempts must be a positive integer >= 1, got: ${config.retries.maxAttempts}`);
+    }
+  }
+  if (config.retries?.initialDelayMs !== undefined) {
+    if (!Number.isInteger(config.retries.initialDelayMs) || config.retries.initialDelayMs < 0) {
+      throw new Error(`review.retries.initialDelayMs must be a non-negative integer >= 0, got: ${config.retries.initialDelayMs}`);
+    }
+  }
+  if (config.retries?.backoffFactor !== undefined) {
+    if (typeof config.retries.backoffFactor !== 'number' || !Number.isFinite(config.retries.backoffFactor) || config.retries.backoffFactor < 1) {
+      throw new Error(`review.retries.backoffFactor must be a finite number >= 1, got: ${config.retries.backoffFactor}`);
     }
   }
 };
@@ -109,6 +137,26 @@ export interface FileConfigSchema {
   quality_gates?: unknown;
   qualityGates?: unknown;
   retry?: Partial<RetryConfig>;
+  external_review?: {
+    enabled?: boolean;
+    authorized_provider?: string;
+    authorizedProvider?: string;
+    retries?: {
+      maxAttempts?: number;
+      initialDelayMs?: number;
+      backoffFactor?: number;
+    };
+  };
+  externalReview?: {
+    enabled?: boolean;
+    authorized_provider?: string;
+    authorizedProvider?: string;
+    retries?: {
+      maxAttempts?: number;
+      initialDelayMs?: number;
+      backoffFactor?: number;
+    };
+  };
 }
 
 export interface PartialAgentConfig {
@@ -117,6 +165,7 @@ export interface PartialAgentConfig {
   skills?: Partial<SkillsConfig>;
   systemPrompt?: Partial<SystemPromptConfig>;
   retry?: Partial<RetryConfig>;
+  review?: Partial<ReviewConfig>;
   provider?: string;
   model?: string;
   baseURL?: string;
@@ -134,6 +183,7 @@ export interface AgentResolvedConfig {
   skills: SkillsConfig;
   systemPrompt: SystemPromptConfig;
   retry: RetryConfig;
+  review: ReviewConfig;
   provider?: string;
   model?: string;
   baseURL?: string;
@@ -335,6 +385,39 @@ export const resolveAgentConfig = (
     maxDelayMs: retryCandidate.maxDelayMs ?? DEFAULT_RETRY_CONFIG.maxDelayMs,
   };
 
+  // Merge Review Config (Defaults < Config File < Env < CLI)
+  const fileReview = fileConfig.external_review ?? fileConfig.externalReview;
+  const envReviewEnabled =
+    process.env.MINI_AGENT_EXTERNAL_REVIEW !== undefined
+      ? process.env.MINI_AGENT_EXTERNAL_REVIEW === 'true'
+      : undefined;
+  const envReviewProvider =
+    process.env.MINI_AGENT_EXTERNAL_REVIEW_PROVIDER ?? process.env.EXTERNAL_REVIEW_PROVIDER;
+
+  const reviewCandidate: Partial<ReviewConfig> = {
+    enabled:
+      cliOverrides.review?.enabled ??
+      envReviewEnabled ??
+      fileReview?.enabled ??
+      false,
+    authorizedProvider:
+      cliOverrides.review?.authorizedProvider ??
+      envReviewProvider ??
+      fileReview?.authorizedProvider ??
+      fileReview?.authorized_provider,
+    retries: cliOverrides.review?.retries ??
+      fileReview?.retries,
+  };
+
+  // Validate review config before returning
+  validateReviewConfig(reviewCandidate);
+
+  const review: ReviewConfig = {
+    enabled: reviewCandidate.enabled ?? false,
+    authorizedProvider: reviewCandidate.authorizedProvider,
+    retries: reviewCandidate.retries,
+  };
+
   return {
     logging: { level, filePath },
     costTracking: {
@@ -353,6 +436,7 @@ export const resolveAgentConfig = (
       path: sysPromptPath,
     },
     retry,
+    review,
     provider,
     model,
     baseURL,

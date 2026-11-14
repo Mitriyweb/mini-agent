@@ -6,7 +6,7 @@ import type { Provider, ProviderOptions, RetryConfig } from '../types/llm.ts';
 export { createWithRetry, createOpenAICompatibleClient } from './providers/common.ts';
 
 export const createProvider = (
-  options: ProviderOptions & { registry?: ProviderRegistry; retry?: RetryConfig } = {},
+  options: ProviderOptions & { registry?: ProviderRegistry; retry?: Partial<RetryConfig> } = {},
 ): Provider => {
   const config = getConfig();
   const registry = options.registry ?? defaultProviderRegistry;
