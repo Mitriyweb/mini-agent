@@ -88,7 +88,7 @@ export async function executeReview(
 /**
  * Format ReviewRequest into a human-readable message for the reviewer.
  */
-function formatReviewMessage(req: ReviewRequest): string {
+export function formatReviewMessage(req: ReviewRequest): string {
   const lines: string[] = [];
 
   lines.push('## Review Request');

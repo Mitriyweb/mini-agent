@@ -456,6 +456,14 @@ export const createEventHandler = (logger: Logger) => {
           logger.logNormal(`${badge} ${result.required ? 'required' : 'optional'} ${result.name}: ${result.status}`);
         }
         break;
+      case 'subagent':
+        if (event.phase === 'start') {
+          logger.logNormal(color.dim(`   Subagent ${event.index + 1}/${event.total} [${event.access ?? 'write'}] started: ${String(event.task).slice(0, 80)}`));
+        } else {
+          const badge = event.status === 'completed' ? color.success('✔') : event.status === 'interrupted' ? color.warn('–') : color.error('✖');
+          logger.logNormal(`${badge} Subagent ${event.index + 1}/${event.total}: ${event.status}${event.error ? ` (${String(event.error).slice(0, 120)})` : ''}`);
+        }
+        break;
     }
   };
 };
@@ -616,6 +624,7 @@ export const main = async () => {
         qualityGates: resolvedConfig.qualityGates,
         review: resolvedConfig.review,
         signal: abortController.signal,
+        subagents: resolvedConfig.subagents,
       });
 
       const result = await orchestrator.run();
@@ -758,6 +767,7 @@ export const main = async () => {
         durableRun,
         qualityGates: resolvedConfig.qualityGates,
         review: resolvedConfig.review,
+        subagents: resolvedConfig.subagents,
       });
 
       const reviewFailed = result.reviewOutcome && result.reviewOutcome.verdict !== 'pass';

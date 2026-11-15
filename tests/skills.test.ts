@@ -69,3 +69,65 @@ describe('Skills Management Test Suite', () => {
     expect(result?.skill?.name).toBe('git');
   });
 });
+
+describe('Built-in skills', () => {
+  it('loadSkills includes built-in review skills as fallback', async () => {
+    const { loadSkills } = await import('../src/agent/customizations.js');
+    const fs = await import('node:fs/promises');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mini-agent-skills-'));
+
+    const skills = await loadSkills(dir);
+    const names = skills.map((s) => s.name);
+    expect(names).toContain('semantic-review');
+    expect(names).toContain('claude-review');
+    expect(names).toContain('codex-review');
+    const semantic = skills.find((s) => s.name === 'semantic-review');
+    expect(semantic?.builtin).toBe(true);
+    expect(semantic?.content.length).toBeGreaterThan(0);
+
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('workspace skills take precedence over built-in skills of the same name', async () => {
+    const { loadSkills } = await import('../src/agent/customizations.js');
+    const fs = await import('node:fs/promises');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mini-agent-skills-'));
+    const skillDir = path.join(dir, '.agents', 'skills', 'semantic-review');
+    await fs.mkdir(skillDir, { recursive: true });
+    await fs.writeFile(
+      path.join(skillDir, 'SKILL.md'),
+      '---\nname: semantic-review\ndescription: Custom workspace review\n---\nCustom workspace review instructions.',
+      'utf8',
+    );
+
+    const skills = await loadSkills(dir);
+    const semantic = skills.find((s) => s.name === 'semantic-review');
+    expect(semantic?.builtin).toBeUndefined();
+    expect(semantic?.content).toContain('Custom workspace review instructions');
+    // Other built-ins still fall back.
+    expect(skills.some((s) => s.name === 'claude-review' && s.builtin)).toBe(true);
+
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('built-in skills resolve as slash commands', async () => {
+    const { loadSkills, resolveSlashCommand } = await import('../src/agent/customizations.js');
+    const fs = await import('node:fs/promises');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mini-agent-skills-'));
+
+    const skills = await loadSkills(dir);
+    const resolved = resolveSlashCommand('/semantic-review focus on auth', [], skills);
+    expect(resolved?.matched).toBe(true);
+    expect(resolved?.kind).toBe('skill');
+    expect(resolved?.prompt).toContain('Semantic Review');
+    expect(resolved?.prompt).toContain('focus on auth');
+
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+});

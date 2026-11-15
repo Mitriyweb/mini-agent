@@ -314,3 +314,32 @@ describe('Permissions System - Integration & Prompt Flow', () => {
     expect(prompted).toBe(false);
   });
 });
+
+describe('Serialized approval queue for concurrent subagents', () => {
+  it('serializeApprovals prevents overlapping interactive prompts', async () => {
+    const { serializeApprovals } = await import('../src/agent/subagents.js');
+    let active = 0;
+    let peak = 0;
+    const inner = {
+      approve: async () => {
+        active += 1;
+        peak = Math.max(peak, active);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        active -= 1;
+        return true;
+      },
+      setAutoApprove: () => {},
+      close: () => {},
+    };
+
+    const serialized = serializeApprovals(inner as any);
+    const results = await Promise.all([
+      serialized.approve({} as any, {}),
+      serialized.approve({} as any, {}),
+      serialized.approve({} as any, {}),
+    ]);
+
+    expect(results).toEqual([true, true, true]);
+    expect(peak).toBe(1);
+  });
+});

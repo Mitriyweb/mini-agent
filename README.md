@@ -41,7 +41,9 @@ A lightweight, modular coding agent harness supporting multi-provider LLMs (**Mo
   - Zero LLM tokens consumed for orchestration logic (parsing, selection, and scheduling).
   - Validates tasks with Quality Gates before marking them completed in `tasks.md`.
   - Resilient execution with bounded retries and resumption support.
-- **Modular Local Tools**: Includes file & workspace operations (`read`, `write`, `edit`, `patch`, `delete`, `glob`, `grep`, `bash`, `check`, `fetch`, `todo`, `openspec`).
+- **Modular Local Tools**: Includes file & workspace operations (`read`, `write`, `edit`, `patch`, `delete`, `glob`, `grep`, `bash`, `check`, `fetch`, `todo`, `openspec`), child-agent delegation (`delegate`), and CLI reviewers (`claude_review`, `codex_review`).
+- **Configurable Subagent Delegation**: Opt-in child agents with per-task read-only or write access, bounded concurrency, step limits, and cancellation.
+- **Built-in Review Skills**: `semantic-review`, `claude-review`, and `codex-review` skills for evidence-based code review, optionally delegated to the installed Claude or Codex CLI.
 
 ---
 
@@ -224,6 +226,12 @@ retry:
   initialDelayMs: 1000          # Initial backoff delay in milliseconds
   backoffFactor: 2              # Exponential backoff multiplier (delay doubles each attempt)
   maxDelayMs: 30000             # Maximum delay between retries (caps exponential growth)
+
+subagents:
+  enabled: false                # Opt-in child-agent delegation (default: off)
+  max_concurrency: 4            # Max child tasks running at once per delegate call
+  max_steps: 30                 # Default per-child step limit
+  allow_nested: false           # Allow write-capable children to delegate further
 ```
 
 ### Retry Policy
@@ -256,6 +264,42 @@ Quality gates are disabled by default. Set `quality_gates.enabled: true` to run 
 
 Each gate uses a kebab-case `id`, optional display `name`, `command`, `required` flag, and optional `timeout_ms`. Results include status, exit code, stdout, stderr, and duration. A failed required gate is returned to the agent for remediation and prevents a successful completion until it passes.
 
+### Subagent Delegation
+
+Child-agent delegation is **disabled by default**. Enable it with `subagents.enabled: true` (or `MINI_AGENT_SUBAGENTS_ENABLED=true`) to let the agent delegate bounded subtasks through the `delegate` tool.
+
+Each delegated task declares a required access mode:
+
+- `read-only` — the child gets a restricted registry with only workspace inspection tools (`read`, `glob`, `grep`). It cannot modify files, run shell commands, or delegate further.
+- `write` — the child gets the full tool registry and the normal workspace-containment and permission-approval flow. Interactive approval prompts from concurrent write children are serialized so they never compete for the terminal.
+
+Behavior and limits:
+
+- Every child starts with **fresh conversation state** (no parent history) but shares the parent's workspace, provider, model, and configuration.
+- `max_concurrency` (default `4`) bounds how many children run at once; results are reported per task with `completed`, `failed`, or `interrupted` status plus usage summaries.
+- `max_steps` (default `30`) caps each child's steps; a task can override it with its own `maxSteps`.
+- Parent cancellation propagates to running children, which report `interrupted`.
+- `allow_nested` (default `false`) lets write-capable children delegate further, bounded by an internal depth limit. Read-only children can never delegate.
+- Children do not run quality gates or external review.
+
+> **Shared-workspace warning:** concurrent `write` children modify the same workspace. Only batch tasks that are independent — there are no worktrees or conflict detection. If two children edit the same file, last write wins.
+
+### Review Skills
+
+Three built-in skills are available when skills are enabled (workspace or user skills of the same name take precedence):
+
+- `/semantic-review` — delegates a read-only child agent to review the requested scope (default: current uncommitted changes) and report findings with severity, file/line evidence, and explicit disclosure of incomplete evidence. Requires `subagents.enabled` for the delegated path; the agent will report if delegation is unavailable.
+- `/claude-review` — sends a **redacted** review bundle to the installed `claude` CLI for an independent read-only review.
+- `/codex-review` — same, via the installed `codex` CLI.
+
+CLI reviewer details:
+
+- **Prerequisites:** the corresponding CLI (`claude` or `codex`) must be installed and authenticated. Missing or unauthenticated CLIs fail explicitly — no silent fallback to another reviewer.
+- **Data handling:** only a redacted review bundle (credentials and sensitive paths removed, size-limited) leaves the machine, delivered over stdin from an isolated temporary directory. The CLI runs non-interactively with read-only flags (`claude -p --permission-mode plan`; `codex exec --sandbox read-only`) and cannot access the original workspace.
+- **Approval:** transmitting the bundle requires the normal tool-approval flow (`claude_review` / `codex_review` tools). Denied approval means the review does not run.
+- **Failures:** non-zero exit, timeout (~120s), cancellation, or empty output is reported explicitly.
+- **Findings format:** severity, file/line location, reasoning, evidence; confirmed defects are distinguished from uncertainty.
+
 ---
 
 ## Environment Variables
@@ -268,6 +312,10 @@ Each gate uses a kebab-case `id`, optional display `name`, `command`, `required`
 | `MINI_AGENT_SYSTEM_PROMPT_ENABLED` | `true` | Enable/disable standard system prompt (`true`/`false`) |
 | `MINI_AGENT_RETRY` | `true` | Enable/disable automatic retry on transient errors (`true`/`false`) |
 | `MINI_AGENT_RETRY_ATTEMPTS` | `3` | Max retry attempts on transient LLM errors |
+| `MINI_AGENT_SUBAGENTS_ENABLED` | `false` | Enable/disable child-agent delegation (`true`/`false`) |
+| `MINI_AGENT_SUBAGENTS_MAX_CONCURRENCY` | `4` | Max concurrent child tasks per delegate call |
+| `MINI_AGENT_SUBAGENTS_MAX_STEPS` | `30` | Default per-child step limit |
+| `MINI_AGENT_SUBAGENTS_ALLOW_NESTED` | `false` | Allow write-capable children to delegate (`true`/`false`) |
 | `PROVIDER` | `router` | Default LLM provider (`router`, `openai`, `anthropic`, `google`, `zai`) |
 | `ZAI_API_KEY` | | API key for Z.AI |
 | `ZAI_BASE_URL` | `https://api.z.ai/api/coding/paas/v4` | Base URL for Z.AI Chat Completions API |

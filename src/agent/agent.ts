@@ -15,6 +15,7 @@ import { createReadTool } from '../tools/read.ts';
 import { createTodoTool } from '../tools/todo.ts';
 import { createOpenspecTool } from '../tools/openspec.ts';
 import { createWriteTool } from '../tools/write.ts';
+import { createClaudeReviewTool, createCodexReviewTool } from '../tools/cli-review.ts';
 import { ToolRegistry } from '../tools/registry.ts';
 import { AgentResultStatus, type AgentEvent, type AgentOptions, type AgentResult } from '../types/agent.ts';
 import type { ToolEnvironment } from '../types/tools.ts';
@@ -28,6 +29,13 @@ import { executeReview, MalformedReviewResponseError } from './review-provider.t
 import { createProvider } from './llm.ts';
 import { defaultProviderRegistry } from './providers/registry.ts';
 import { ReviewVerdict, ReviewResultStatus, BaselineType, ExecutionStatus } from './review-types.ts';
+import {
+  createDelegateTool,
+  createReadOnlyRegistry,
+  serializeApprovals,
+  MAX_SUBAGENT_DEPTH,
+  type ChildRunner,
+} from './subagents.ts';
 
 const MAX_RESULT_CHARS = 60_000;
 const LOG_RESULT_CHARS = 4_000;
@@ -93,6 +101,8 @@ export const createBuiltInRegistry = (env: ToolEnvironment): ToolRegistry => {
   registry.register(createFetchTool());
   registry.register(createTodoTool());
   registry.register(createOpenspecTool(env));
+  registry.register(createClaudeReviewTool(env));
+  registry.register(createCodexReviewTool(env));
   return registry;
 };
 
@@ -216,6 +226,10 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
     reviewBaseline = new ReviewOrchestrator(workspace, options.review).captureBaseline();
   }
 
+  // Baseline captured at run start so CLI reviewer tools can build a redacted
+  // review bundle covering the whole run, not just changes since the last call.
+  const cliReviewBaseline = new ReviewOrchestrator(workspace, { enabled: false }).captureBaseline();
+
   const emit = async (type: AgentEvent['type'], data = {}) => {
     if (type === 'tool') {
       auditLogger.logEvent(runId, 'tool_call', data);
@@ -231,8 +245,73 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
     ? [...durableRun.state.messages]
     : initialMessages(task, effectiveInstructions, priorMessages);
   let lastQualityGateResults: QualityGateResult[] | undefined;
-  const registry = createBuiltInRegistry({ workspace });
+  const subagentsConfig = options.subagents;
+  const subagentDepth = options.subagentDepth ?? 0;
+  const readOnlyTools = options.forceReadOnlyTools === true;
+  const registry = readOnlyTools
+    ? createReadOnlyRegistry({ workspace })
+    : createBuiltInRegistry({
+        workspace,
+        reviewContext: { runId, task, baseline: cliReviewBaseline },
+        signal,
+      });
   const toolContext: ToolCallContext = { permissions, emit, registry, logger };
+
+  const canDelegate =
+    !readOnlyTools &&
+    subagentsConfig?.enabled === true &&
+    (subagentDepth === 0 || (subagentsConfig.allowNested && subagentDepth < MAX_SUBAGENT_DEPTH));
+
+  if (canDelegate && subagentsConfig) {
+    const serializedPermissions = serializeApprovals(permissions);
+    const runChild: ChildRunner = async ({ task: childTask, access, maxSteps: childMaxSteps, signal: childSignal }) => {
+      const childReadOnly = access === 'read-only';
+      const childCostTracking =
+        options.costTracking instanceof UsageTracker
+          ? { enabled: options.costTracking.isEnabled() }
+          : options.costTracking;
+      try {
+        const childResult = await runAgent({
+          task: `Delegated ${access} subtask. Complete only this task and report your findings:\n\n${childTask}`,
+          provider,
+          permissions: childReadOnly ? permissions : serializedPermissions,
+          workspace,
+          maxSteps: childMaxSteps ?? subagentsConfig.maxSteps,
+          onEvent: undefined,
+          priorMessages: null,
+          workflows,
+          skills: options.skills,
+          logging: options.logging,
+          costTracking: childCostTracking,
+          skillsConfig,
+          systemPromptConfig: options.systemPromptConfig,
+          instructions: options.instructions,
+          logger,
+          durableRun: undefined,
+          qualityGates: { enabled: false, gates: [] },
+          review: { enabled: false },
+          signal: childSignal,
+          subagents: subagentsConfig,
+          subagentDepth: subagentDepth + 1,
+          forceReadOnlyTools: childReadOnly,
+        });
+        return { status: 'completed', text: childResult.text, usageSummary: childResult.usageSummary };
+      } catch (error) {
+        if (childSignal.aborted) {
+          return { status: 'interrupted', error: errorText(error) };
+        }
+        return { status: 'failed', error: errorText(error) };
+      }
+    };
+    registry.register(
+      createDelegateTool({
+        config: subagentsConfig,
+        runChild,
+        emit,
+        signal,
+      }),
+    );
+  }
 
   try {
     const firstStep = durableRun?.state.messages.length ? durableRun.state.currentStep + 1 : 1;

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { loadBuiltinSkillSources } from './builtin-skills.ts';
 
 export interface FrontmatterResult {
   metadata: Record<string, string>;
@@ -23,6 +24,8 @@ export interface Skill {
   path: string;
   content: string;
   raw: string;
+  /** True for skills bundled with mini-agent rather than discovered on disk. */
+  builtin?: boolean;
 }
 
 export interface WorkflowResolveResult {
@@ -172,6 +175,22 @@ export const loadSkills = async (workspaceRoot?: string): Promise<Skill[]> => {
     }
   }
 
+  // Built-in skills are the lowest-precedence fallback: workspace and user
+  // skills of the same name always win.
+  for (const source of await loadBuiltinSkillSources()) {
+    if (skills.has(source.name)) continue;
+    const { metadata, body } = parseFrontmatter(source.raw);
+    skills.set(source.name, {
+      name: metadata['name'] || source.name,
+      description: metadata['description'] || '',
+      dir: path.dirname(source.path),
+      path: source.path,
+      content: body,
+      raw: source.raw,
+      builtin: true,
+    });
+  }
+
   return Array.from(skills.values());
 };
 
@@ -191,10 +210,22 @@ export const formatCustomizationsPrompt = ({
     );
   }
 
-  if (skills.length > 0) {
-    const skillLines = skills.map((s) => `- ${s.name} (${s.path}): ${s.description}`);
+  const fileSkills = skills.filter((s) => !s.builtin);
+  const builtinSkills = skills.filter((s) => s.builtin);
+
+  if (fileSkills.length > 0) {
+    const skillLines = fileSkills.map((s) => `- ${s.name} (${s.path}): ${s.description}`);
     sections.push(
       `## Skills\nSkills are specialized instruction sets that extend your capabilities.\nAvailable skills:\n${skillLines.join('\n')}\n\nWhen a skill is relevant to the task, read its SKILL.md file using the read tool before proceeding.`,
+    );
+  }
+
+  if (builtinSkills.length > 0) {
+    const builtinSections = builtinSkills.map(
+      (s) => `### ${s.name}\n${s.description}\n\n${s.content}`,
+    );
+    sections.push(
+      `## Built-in Skills\nThese skills ship with mini-agent; their instructions are included below. Follow them when relevant.\n\n${builtinSections.join('\n\n')}`,
     );
   }
 

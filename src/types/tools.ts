@@ -1,4 +1,5 @@
 import type { Workspace } from '../agent/workspace.ts';
+import type { BaselineType } from '../agent/review-types.ts';
 
 export enum TrustKind {
   PATH = 'path',
@@ -15,8 +16,18 @@ export interface ToolDefinition {
   };
 }
 
+export interface ReviewBundleContext {
+  runId: string;
+  task: string;
+  baseline?: { type: BaselineType; ref?: string; timestamp: string };
+}
+
 export interface ToolEnvironment {
   workspace: Workspace;
+  /** Context used to build redacted review bundles for CLI reviewer tools. */
+  reviewContext?: ReviewBundleContext;
+  /** Abort signal of the owning agent run, propagated to long-running tools. */
+  signal?: AbortSignal;
 }
 
 export interface Tool<TArgs = any, TResult = unknown> {

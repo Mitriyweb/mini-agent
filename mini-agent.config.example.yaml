@@ -47,3 +47,10 @@ retry:
 # Note: --retry-attempts <n> (CLI) controls maxAttempts for this agent run only.
 # Distinct from --max-retries <n> (OpenSpec tool retries on permanent failures).
 
+# Child-agent delegation (opt-in, disabled by default)
+subagents:
+  enabled: false                # Set true to enable the delegate tool
+  max_concurrency: 4            # Max child tasks running at once per delegate call
+  max_steps: 30                 # Default per-child step limit
+  allow_nested: false           # Allow write-capable children to delegate further
+

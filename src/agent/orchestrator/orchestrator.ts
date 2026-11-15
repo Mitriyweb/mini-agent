@@ -41,6 +41,7 @@ export interface OrchestratorOptions {
   usageTracker?: AgentOptions['usageTracker'];
   qualityGates?: AgentOptions['qualityGates'];
   review?: AgentOptions['review'];
+  subagents?: AgentOptions['subagents'];
   signal?: AbortSignal;
   /** Optional runner override for tests/mocks */
   agentRunner?: (options: AgentOptions) => Promise<any>;
@@ -218,6 +219,7 @@ export class OpenSpecOrchestrator {
             durableRun,
             qualityGates: this.options.qualityGates,
             review: this.options.review,
+            subagents: this.options.subagents,
             signal: this.options.signal,
           });
         } catch (err) {

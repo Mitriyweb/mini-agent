@@ -10,6 +10,7 @@ import type { SystemPromptConfig } from '../agent/system-prompt.ts';
 import type { DurableRun } from '../agent/run-state.ts';
 import type { QualityGateResult, QualityGatesConfig } from '../agent/quality-gates.ts';
 import type { ReviewConfig } from '../agent/review-orchestrator.ts';
+import type { SubagentsConfig } from '../agent/subagents.ts';
 import { ReviewResultStatus, ReviewVerdict } from '../agent/review-types.ts';
 
 export enum AgentResultStatus {
@@ -25,7 +26,17 @@ export type AgentEvent =
   | { type: 'assistant'; text: string }
   | { type: 'quality-gates'; results: QualityGateResult[] }
   | { type: 'review-start'; runId: string }
-  | { type: 'review-complete'; verdict: string; findings: string };
+  | { type: 'review-complete'; verdict: string; findings: string }
+  | {
+      type: 'subagent';
+      phase: 'start' | 'finish';
+      index: number;
+      total: number;
+      task: string;
+      access?: string;
+      status?: string;
+      error?: string;
+    };
 
 export interface AgentOptions {
   task: string;
@@ -50,6 +61,12 @@ export interface AgentOptions {
   qualityGates?: QualityGatesConfig;
   review?: ReviewConfig;
   signal?: AbortSignal;
+  /** Subagent delegation configuration. Disabled by default. */
+  subagents?: SubagentsConfig;
+  /** Internal: delegation depth of this run (0 for top-level agents). */
+  subagentDepth?: number;
+  /** Internal: restrict this run to the read-only inspection tool registry. */
+  forceReadOnlyTools?: boolean;
 }
 
 export interface AgentResult {

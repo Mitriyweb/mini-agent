@@ -9,6 +9,7 @@ import type { RetryConfig } from '../types/llm.ts';
 import type { ReviewConfig } from './review-orchestrator.ts';
 import { normalizeQualityGatesConfig, type QualityGatesConfig } from './quality-gates.ts';
 import { resolveProfile } from './profiles.ts';
+import { resolveSubagentsConfig, validateSubagentsConfig, type SubagentsConfig } from './subagents.ts';
 
 export { type RetryConfig } from '../types/llm.ts';
 
@@ -157,6 +158,15 @@ export interface FileConfigSchema {
       backoffFactor?: number;
     };
   };
+  subagents?: {
+    enabled?: boolean;
+    maxConcurrency?: number;
+    max_concurrency?: number;
+    maxSteps?: number;
+    max_steps?: number;
+    allowNested?: boolean;
+    allow_nested?: boolean;
+  };
 }
 
 export interface PartialAgentConfig {
@@ -172,6 +182,7 @@ export interface PartialAgentConfig {
   maxSteps?: number;
   autoApprove?: boolean;
   qualityGates?: QualityGatesConfig;
+  subagents?: Partial<SubagentsConfig>;
   configPath?: string;
   /** Optional profile name to apply as additive preset overrides. */
   profile?: string;
@@ -190,6 +201,7 @@ export interface AgentResolvedConfig {
   maxSteps?: number;
   autoApprove?: boolean;
   qualityGates: QualityGatesConfig;
+  subagents: SubagentsConfig;
 }
 
 const CONFIG_FILE_NAMES = [
@@ -418,6 +430,56 @@ export const resolveAgentConfig = (
     retries: reviewCandidate.retries,
   };
 
+  // Merge Subagents Config (Defaults < Config File < Profile < Env < CLI)
+  const fileSubagents = fileConfig.subagents;
+  const envSubagentsEnabled =
+    process.env.MINI_AGENT_SUBAGENTS_ENABLED !== undefined
+      ? process.env.MINI_AGENT_SUBAGENTS_ENABLED === 'true'
+      : undefined;
+  const envSubagentsConcurrency =
+    process.env.MINI_AGENT_SUBAGENTS_MAX_CONCURRENCY !== undefined
+      ? parseInt(process.env.MINI_AGENT_SUBAGENTS_MAX_CONCURRENCY, 10)
+      : undefined;
+  const envSubagentsMaxSteps =
+    process.env.MINI_AGENT_SUBAGENTS_MAX_STEPS !== undefined
+      ? parseInt(process.env.MINI_AGENT_SUBAGENTS_MAX_STEPS, 10)
+      : undefined;
+  const envSubagentsAllowNested =
+    process.env.MINI_AGENT_SUBAGENTS_ALLOW_NESTED !== undefined
+      ? process.env.MINI_AGENT_SUBAGENTS_ALLOW_NESTED === 'true'
+      : undefined;
+
+  const subagentsCandidate: Partial<SubagentsConfig> = {
+    enabled:
+      cliOverrides.subagents?.enabled ??
+      envSubagentsEnabled ??
+      (profileOverrides as PartialAgentConfig).subagents?.enabled ??
+      fileSubagents?.enabled ??
+      false,
+    maxConcurrency:
+      cliOverrides.subagents?.maxConcurrency ??
+      envSubagentsConcurrency ??
+      (profileOverrides as PartialAgentConfig).subagents?.maxConcurrency ??
+      fileSubagents?.maxConcurrency ??
+      fileSubagents?.max_concurrency,
+    maxSteps:
+      cliOverrides.subagents?.maxSteps ??
+      envSubagentsMaxSteps ??
+      (profileOverrides as PartialAgentConfig).subagents?.maxSteps ??
+      fileSubagents?.maxSteps ??
+      fileSubagents?.max_steps,
+    allowNested:
+      cliOverrides.subagents?.allowNested ??
+      envSubagentsAllowNested ??
+      (profileOverrides as PartialAgentConfig).subagents?.allowNested ??
+      fileSubagents?.allowNested ??
+      fileSubagents?.allow_nested ??
+      false,
+  };
+
+  validateSubagentsConfig(subagentsCandidate);
+  const subagents = resolveSubagentsConfig(subagentsCandidate);
+
   return {
     logging: { level, filePath },
     costTracking: {
@@ -443,5 +505,6 @@ export const resolveAgentConfig = (
     maxSteps,
     autoApprove,
     qualityGates,
+    subagents,
   };
 };
