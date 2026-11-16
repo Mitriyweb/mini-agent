@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { parseArgs } from '../src/start.js';
+import { parseArgs, parsePermissionModeCommand } from '../src/start.js';
 import { Workspace } from '../src/agent/workspace.js';
 import { createReadTool } from '../src/tools/read.js';
 import { createWriteTool } from '../src/tools/write.js';
@@ -14,6 +14,7 @@ import { createOpenspecTool } from '../src/tools/openspec.js';
 import { createTodoTool, TodoStatus } from '../src/tools/todo.js';
 import { createGrepTool } from '../src/tools/grep.js';
 import { createBuiltInRegistry, runAgent } from '../src/agent/agent.js';
+import type { AgentResult } from '../src/types/agent.js';
 import { createPermissions } from '../src/agent/permissions.js';
 import {
   createReadOnlyRegistry,
@@ -52,6 +53,27 @@ describe('mini-agent TypeScript test suite', () => {
     expect(parsed.autoApprove).toBe(true);
     expect(parsed.customModel).toBe('gpt-4o');
     expect(parsed.task).toBe('my task');
+  });
+
+  it('parseArgs parses permission mode flags', () => {
+    expect(parseArgs(['node', 'start.js', '--permission-mode', 'bypass', 'task']).permissionMode).toBe('bypass');
+    expect(parseArgs(['node', 'start.js', '--permission-mode', 'yolo']).permissionMode).toBe('yolo');
+    expect(parseArgs(['node', 'start.js', '--bypass']).permissionMode).toBe('bypass');
+    expect(parseArgs(['node', 'start.js', 'task']).permissionMode).toBeUndefined();
+  });
+
+  it('parsePermissionModeCommand handles show/set/aliases/invalid', () => {
+    expect(parsePermissionModeCommand('/mode')).toEqual({ kind: 'show' });
+    expect(parsePermissionModeCommand('/bypass')).toEqual({ kind: 'set', mode: 'bypass' });
+    expect(parsePermissionModeCommand('/yolo')).toEqual({ kind: 'set', mode: 'bypass' });
+    expect(parsePermissionModeCommand('/dangerous')).toEqual({ kind: 'set', mode: 'bypass' });
+    expect(parsePermissionModeCommand('/normal')).toEqual({ kind: 'set', mode: 'normal' });
+    expect(parsePermissionModeCommand('/mode bypass')).toEqual({ kind: 'set', mode: 'bypass' });
+    expect(parsePermissionModeCommand('/mode normal')).toEqual({ kind: 'set', mode: 'normal' });
+    expect(parsePermissionModeCommand('/mode yolo')).toEqual({ kind: 'set', mode: 'bypass' });
+    expect(parsePermissionModeCommand('/mode bogus')).toEqual({ kind: 'invalid' });
+    expect(parsePermissionModeCommand('fix the bug')).toEqual({ kind: 'none' });
+    expect(parsePermissionModeCommand('/skills')).toEqual({ kind: 'none' });
   });
 
   it('Workspace containment blocks directory traversal escapes', async () => {
@@ -648,5 +670,100 @@ describe('Subagent delegation', () => {
 
     expect(result.text).toContain('parent done');
     expect(peakApprovals).toBe(1);
+  });
+});
+
+describe('Bypass permission mode', () => {
+  it('write-capable child inherits parent bypass mode and auto-approves tools', async () => {
+    const { dir, workspace } = await tempWorkspace();
+    // No autoApprove and no ask callback: without bypass this would prompt.
+    const permissions = createPermissions({ permissionMode: 'bypass' }, workspace);
+    let parentCalls = 0;
+    let childCalls = 0;
+
+    const provider = {
+      model: 'mock-model',
+      baseURL: 'http://localhost',
+      apiKey: 'dummy',
+      async respond(request: any) {
+        const userText = lastUserContent(request);
+        if (userText.includes('Delegated write subtask')) {
+          childCalls += 1;
+          if (childCalls === 1) {
+            return toolCallResponse('bash', { command: 'touch bypass-child.txt' });
+          }
+          return textResponse('child ran command');
+        }
+        parentCalls += 1;
+        if (parentCalls === 1) {
+          return toolCallResponse('delegate', {
+            tasks: [{ task: 'create bypass-child.txt via shell', access: 'write' }],
+          });
+        }
+        return textResponse('parent done');
+      },
+    };
+
+    const result = await runAgent({
+      task: 'parent',
+      provider: provider as any,
+      permissions,
+      workspace,
+      maxSteps: 10,
+      subagents: SUBAGENTS_ENABLED,
+    });
+
+    expect(result.text).toContain('parent done');
+    const content = await fs.readFile(path.join(dir, 'bypass-child.txt'), 'utf8').catch(() => null);
+    expect(content).not.toBeNull();
+    const delegateOutput = result.messages
+      .filter((m: any) => m.role === 'tool')
+      .map((m: any) => String(m.content))
+      .find((c: string) => c.includes('child ran command'));
+    expect(delegateOutput).toContain('"status": "completed"');
+  });
+
+  it('bypass auto-approves CLI review bundle transmission', async () => {
+    const { workspace } = await tempWorkspace();
+    const permissions = createPermissions({ permissionMode: 'bypass' }, workspace);
+    // Keep the real claude/codex CLIs off PATH so execution fails fast.
+    const emptyBin = await fs.mkdtemp(path.join(os.tmpdir(), 'mini-agent-empty-bin-'));
+    const originalPath = process.env.PATH;
+    process.env.PATH = emptyBin;
+    let calls = 0;
+
+    const provider = {
+      model: 'mock-model',
+      baseURL: 'http://localhost',
+      apiKey: 'dummy',
+      async respond() {
+        calls += 1;
+        if (calls === 1) {
+          return toolCallResponse('claude_review', {});
+        }
+        return textResponse('review requested');
+      },
+    };
+
+    let result: AgentResult;
+    try {
+      result = await runAgent({
+        task: 'review the workspace',
+        provider: provider as any,
+        permissions,
+        workspace,
+        maxSteps: 5,
+      });
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+    }
+
+    expect(result!.text).toContain('review requested');
+    // Approval passed (otherwise the result would start with DENIED:); the
+    // stub environment has no claude CLI so execution reports an explicit error.
+    const toolMessage = result.messages.find((m: any) => m.role === 'tool');
+    expect(String(toolMessage?.content)).not.toContain('DENIED:');
+    expect(String(toolMessage?.content)).toContain('ERROR: claude review failed');
   });
 });

@@ -132,6 +132,27 @@ export const executeQualityGates = async ({
   return results;
 };
 
+/**
+ * Produce skipped results for every configured (or discoverable) gate without
+ * executing any commands. Used when the permission mode is 'bypass': gates are
+ * reported as skipped rather than passed so run reports stay honest.
+ */
+export const skippedQualityGateResults = (
+  config: QualityGatesConfig,
+  workspace: Workspace,
+): QualityGateResult[] => {
+  if (!config?.enabled) return [];
+  const gates = config.gates.length > 0 ? config.gates : discoverQualityGates(workspace.root);
+  return gates.map((gate) => ({
+    ...gate,
+    status: 'skipped',
+    stdout: '',
+    stderr: '',
+    durationMs: 0,
+    reason: 'Skipped: bypass permission mode.',
+  }));
+};
+
 export const hasRequiredGateFailure = (results: QualityGateResult[]): boolean =>
   results.some((result) => result.required && result.status === 'failed');
 

@@ -11,8 +11,23 @@ import type { ReviewConfig } from './review-orchestrator.ts';
 import { normalizeQualityGatesConfig, type QualityGatesConfig } from './quality-gates.ts';
 import { resolveProfile } from './profiles.ts';
 import { resolveSubagentsConfig, validateSubagentsConfig, type SubagentsConfig } from './subagents.ts';
+import { PermissionMode } from '../types/permissions.ts';
 
 export { type RetryConfig } from '../types/llm.ts';
+export type { PermissionMode } from '../types/permissions.ts';
+
+/**
+ * Normalize a user-supplied permission mode. Accepts 'normal', 'bypass',
+ * and the Devin-compatible aliases 'yolo' and 'dangerous' (all → 'bypass').
+ * Empty/undefined resolves to 'normal'; anything else is rejected.
+ */
+export const normalizePermissionMode = (value: unknown): PermissionMode => {
+  if (value === undefined || value === null || value === '') return PermissionMode.NORMAL;
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === 'normal') return PermissionMode.NORMAL;
+  if (normalized === 'bypass' || normalized === 'yolo' || normalized === 'dangerous') return PermissionMode.BYPASS;
+  throw new Error(`permission_mode must be "normal" or "bypass" (aliases: yolo, dangerous), got: ${value}`);
+};
 
 export const DEFAULT_RETRY_CONFIG: RetryConfig = {
   enabled: true,
@@ -136,6 +151,8 @@ export interface FileConfigSchema {
   maxSteps?: number;
   auto_approve?: boolean;
   autoApprove?: boolean;
+  permission_mode?: string;
+  permissionMode?: string;
   quality_gates?: unknown;
   qualityGates?: unknown;
   retry?: Partial<RetryConfig>;
@@ -183,6 +200,7 @@ export interface PartialAgentConfig {
   baseURL?: string;
   maxSteps?: number;
   autoApprove?: boolean;
+  permissionMode?: string;
   qualityGates?: QualityGatesConfig;
   subagents?: Partial<SubagentsConfig>;
   configPath?: string;
@@ -202,6 +220,7 @@ export interface AgentResolvedConfig {
   baseURL?: string;
   maxSteps?: number;
   autoApprove?: boolean;
+  permissionMode: PermissionMode;
   qualityGates: QualityGatesConfig;
   subagents: SubagentsConfig;
   customProviders: Record<string, CustomProviderConfig>;
@@ -372,6 +391,16 @@ export const resolveAgentConfig = (
     fileConfig.autoApprove ??
     fileConfig.auto_approve;
 
+  // Permission mode: defaults < file < profile < env < CLI. Aliases
+  // (bypass/yolo/dangerous) normalize to 'bypass'; invalid values throw.
+  const permissionMode = normalizePermissionMode(
+    cliOverrides.permissionMode ??
+      process.env.MINI_AGENT_PERMISSION_MODE ??
+      (profileOverrides as PartialAgentConfig).permissionMode ??
+      fileConfig.permission_mode ??
+      fileConfig.permissionMode,
+  );
+
   // Merge Retry Config (Defaults < Config File < Profile < Env < CLI)
   const envRetryEnabled =
     process.env.MINI_AGENT_RETRY !== undefined
@@ -510,6 +539,7 @@ export const resolveAgentConfig = (
     baseURL,
     maxSteps,
     autoApprove,
+    permissionMode,
     qualityGates,
     subagents,
     customProviders,

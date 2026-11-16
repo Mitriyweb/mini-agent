@@ -47,6 +47,11 @@ retry:
 # Note: --retry-attempts <n> (CLI) controls maxAttempts for this agent run only.
 # Distinct from --max-retries <n> (OpenSpec tool retries on permanent failures).
 
+# Permission mode: normal (default) prompts for sensitive tool calls;
+# bypass (aliases: yolo, dangerous) auto-approves all prompts and skips
+# quality gates. Deny rules and workspace containment still apply.
+permission_mode: normal
+
 # Child-agent delegation (opt-in, disabled by default)
 subagents:
   enabled: false                # Set true to enable the delegate tool

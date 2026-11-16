@@ -1,5 +1,5 @@
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
-import type { Permissions } from './permissions.ts';
+import type { Permissions, PermissionMode } from './permissions.ts';
 import type { Provider, CustomProviderConfig } from './llm.ts';
 import type { Workspace } from '../agent/workspace.ts';
 import type { Workflow, Skill } from '../agent/customizations.ts';
@@ -119,6 +119,8 @@ export interface AgentOptions {
   forceReadOnlyTools?: boolean;
   /** User-declared custom providers from config, forwarded to provider resolution. */
   customProviders?: Record<string, CustomProviderConfig>;
+  /** Effective permission mode for this run. Falls back to permissions.getPermissionMode() when the Permissions implementation exposes it. */
+  permissionMode?: PermissionMode;
 }
 
 export interface AgentResult {

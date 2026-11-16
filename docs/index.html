@@ -329,6 +329,10 @@
         <h3>Built-in review skills</h3>
         <p>semantic-review, claude-review, and codex-review send only a redacted bundle to an optional CLI reviewer in a read-only, isolated run.</p>
       </div>
+      <div class="feature">
+        <h3>Bypass mode</h3>
+        <p>Opt-in permission mode (flag, env, config, or /bypass) auto-approves all tool prompts and skips quality gates — deny rules and workspace containment still apply.</p>
+      </div>
     </div>
 
     <div class="terminal" aria-label="mini-agent interactive terminal demo">
@@ -417,6 +421,8 @@
         '  /model [model_id]             Select or change model',
         '  /permissions                  View or modify permissions policy',
         '  /auto-approve [on|off]        Toggle auto-approval for tool execution',
+        '  /mode [normal|bypass]         Show or switch permission mode',
+        '  /bypass                       Auto-approve all actions and skip quality gates',
         '  /workflows                    List agent workflows',
         '  /skills                       List installed skills',
         '  /clear                        Clear terminal output'

@@ -9,6 +9,7 @@ import {
   PermissionDecisionKind,
   PermissionEffect,
   PermissionMatchKind,
+  PermissionMode,
   type Permissions,
   type PermissionsOptions,
 } from '../types/permissions.ts';
@@ -105,10 +106,18 @@ export const createPermissions = (
   workspace?: Workspace,
 ): Permissions => {
   let autoApprove = options.autoApprove ?? false;
+  let permissionMode: PermissionMode = options.permissionMode ?? PermissionMode.NORMAL;
+  const onPermissionModeChange = options.onPermissionModeChange;
   const ask = options.ask;
   const askDecision = options.askDecision;
   let rl = options.rl ?? null;
   let ownsRl = false;
+
+  const setPermissionMode = (mode: PermissionMode) => {
+    if (permissionMode === mode) return;
+    permissionMode = mode;
+    onPermissionModeChange?.(mode);
+  };
 
   const configPath =
     options.configPath ??
@@ -132,15 +141,34 @@ export const createPermissions = (
     setAutoApprove: (enabled: boolean) => {
       autoApprove = enabled;
     },
+    setPermissionMode,
+    getPermissionMode: () => permissionMode,
     async approve(tool: Tool, args: any): Promise<boolean> {
-      if (!tool.needsApproval || autoApprove) return true;
-      if (workspace && workspace.gitRoot && !toolLeavesTrustRoot(tool, args, workspace)) {
-        return true;
-      }
+      if (!tool.needsApproval) return true;
 
       const commandTarget = typeof args?.command === 'string' ? args.command : null;
       const description = tool.describe ? tool.describe(args) : tool.definition.function.name;
       const targetStr = commandTarget || description;
+
+      // Bypass mode: auto-approve every prompt, but deny rules are evaluated
+      // first (deny always wins) and path/command-scoped tools that would
+      // escape the trust root fail closed instead of being auto-approved.
+      if (permissionMode === PermissionMode.BYPASS) {
+        const bypassEval = manager.evaluate(targetStr);
+        if (bypassEval === PermissionEffect.DENY) return false;
+        if (bypassEval === PermissionEffect.ALLOW) return true;
+        if (workspace?.gitRoot) {
+          const trust = typeof tool.trust === 'function' ? tool.trust(args) : tool.trust ?? TrustKind.ALWAYS;
+          if (trust === TrustKind.PATH && filePathLeavesTrustRoot(args, workspace)) return false;
+          if (trust === TrustKind.COMMAND && bashLeavesTrustRoot(args, workspace)) return false;
+        }
+        return true;
+      }
+
+      if (autoApprove) return true;
+      if (workspace && workspace.gitRoot && !toolLeavesTrustRoot(tool, args, workspace)) {
+        return true;
+      }
 
       // 1. Evaluate stored permissions rules
       const evalResult = manager.evaluate(targetStr);
@@ -158,6 +186,10 @@ export const createPermissions = (
         if (res && typeof res === 'object') {
           if (res.kind === PermissionDecisionKind.ALLOW_ONCE) return true;
           if (res.kind === PermissionDecisionKind.DENY) return false;
+          if (res.kind === PermissionDecisionKind.BYPASS) {
+            setPermissionMode(PermissionMode.BYPASS);
+            return true;
+          }
 
           const pattern = res.pattern || targetStr;
           const match = res.match || PermissionMatchKind.EXACT;
@@ -189,12 +221,18 @@ export const createPermissions = (
         console.log(`2. Allow for this session`);
         console.log(`3. Allow for this project`);
         console.log(`4. Allow globally`);
-        console.log(`5. Reject\n`);
+        console.log(`5. Reject`);
+        console.log(`6. Bypass mode — auto-approve all for this session\n`);
 
-        const answer = await activeRl.question(color.warn('Select an option [1-5] (default 5): '));
+        const answer = await activeRl.question(color.warn('Select an option [1-6] (default 5): '));
         const choice = answer.trim().toLowerCase();
 
         if (choice === '1' || choice === 'y' || choice === 'yes') {
+          return true;
+        }
+
+        if (choice === '6' || choice === 'bypass' || choice === 'b') {
+          setPermissionMode(PermissionMode.BYPASS);
           return true;
         }
 

@@ -80,4 +80,31 @@ describe('quality gates', () => {
       expect(calls).toBe(2);
     });
   });
+
+  it('skips gate execution and reports gates as skipped under bypass permission mode', async () => {
+    await withWorkspace(async (directory) => {
+      const workspace = await Workspace.open(directory);
+      const marker = path.join(directory, 'gate-ran.txt');
+      const permissions = createPermissions({ permissionMode: 'bypass' }, workspace);
+      const provider = {
+        model: 'mock', baseURL: 'http://localhost', apiKey: 'test',
+        async respond() {
+          return { choices: [{ message: { role: 'assistant', content: 'done' } }] };
+        },
+      };
+
+      const result = await runAgent({
+        task: 'finish', provider: provider as any, permissions, workspace, maxSteps: 2,
+        qualityGates: normalizeQualityGatesConfig({
+          gates: [{ id: 'marker', command: `touch ${JSON.stringify(marker)}` }],
+        }),
+      });
+
+      expect(result.text).toBe('done');
+      expect(result.qualityGateResults?.map((r) => r.status)).toEqual(['skipped']);
+      expect(result.qualityGateResults?.[0].reason).toContain('bypass');
+      // The gate command never ran.
+      await expect(fs.promises.access(marker)).rejects.toThrow();
+    });
+  });
 });

@@ -19,6 +19,11 @@ const BUILTIN_SLASH_COMMANDS = [
   '/system-prompt',
   '/max-steps',
   '/auto-approve',
+  '/mode',
+  '/bypass',
+  '/yolo',
+  '/dangerous',
+  '/normal',
   '/exit',
   '/quit',
 ];

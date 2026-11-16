@@ -20,6 +20,7 @@ describe('Configuration Precedence Test Suite (defaults < config file < env < CL
       MINI_AGENT_SUBAGENTS_MAX_CONCURRENCY: process.env.MINI_AGENT_SUBAGENTS_MAX_CONCURRENCY,
       MINI_AGENT_SUBAGENTS_MAX_STEPS: process.env.MINI_AGENT_SUBAGENTS_MAX_STEPS,
       MINI_AGENT_SUBAGENTS_ALLOW_NESTED: process.env.MINI_AGENT_SUBAGENTS_ALLOW_NESTED,
+      MINI_AGENT_PERMISSION_MODE: process.env.MINI_AGENT_PERMISSION_MODE,
     };
     delete process.env.LOG_LEVEL;
     delete process.env.MINI_AGENT_LOG_LEVEL;
@@ -30,6 +31,7 @@ describe('Configuration Precedence Test Suite (defaults < config file < env < CL
     delete process.env.MINI_AGENT_SUBAGENTS_MAX_CONCURRENCY;
     delete process.env.MINI_AGENT_SUBAGENTS_MAX_STEPS;
     delete process.env.MINI_AGENT_SUBAGENTS_ALLOW_NESTED;
+    delete process.env.MINI_AGENT_PERMISSION_MODE;
   });
 
   afterEach(async () => {
@@ -186,5 +188,61 @@ subagents:
     expect(() =>
       resolveAgentConfig({ subagents: { allowNested: 'yes' as any } }, tempDir),
     ).toThrow(/subagents\.allowNested/);
+  });
+
+  it('permissionMode defaults to normal', () => {
+    const config = resolveAgentConfig({}, tempDir);
+    expect(config.permissionMode).toBe('normal');
+  });
+
+  it('permissionMode config file overrides defaults including snake_case keys', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'mini-agent.config.yaml'),
+      'permission_mode: bypass\n',
+      'utf8',
+    );
+    expect(resolveAgentConfig({}, tempDir).permissionMode).toBe('bypass');
+
+    await fs.writeFile(
+      path.join(tempDir, 'mini-agent.config.yaml'),
+      'permissionMode: yolo\n',
+      'utf8',
+    );
+    expect(resolveAgentConfig({}, tempDir).permissionMode).toBe('bypass');
+  });
+
+  it('permissionMode environment variable overrides config file', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'mini-agent.config.yaml'),
+      'permission_mode: normal\n',
+      'utf8',
+    );
+    process.env.MINI_AGENT_PERMISSION_MODE = 'dangerous';
+    expect(resolveAgentConfig({}, tempDir).permissionMode).toBe('bypass');
+  });
+
+  it('permissionMode CLI overrides beat environment and config file', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'mini-agent.config.yaml'),
+      'permission_mode: bypass\n',
+      'utf8',
+    );
+    process.env.MINI_AGENT_PERMISSION_MODE = 'bypass';
+    expect(resolveAgentConfig({ permissionMode: 'normal' }, tempDir).permissionMode).toBe('normal');
+  });
+
+  it('permissionMode rejects invalid values', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'mini-agent.config.yaml'),
+      'permission_mode: sometimes\n',
+      'utf8',
+    );
+    expect(() => resolveAgentConfig({}, tempDir)).toThrow(/permission_mode/);
+
+    await fs.rm(path.join(tempDir, 'mini-agent.config.yaml'));
+    process.env.MINI_AGENT_PERMISSION_MODE = 'yolo';
+    expect(resolveAgentConfig({}, tempDir).permissionMode).toBe('bypass');
+    process.env.MINI_AGENT_PERMISSION_MODE = 'bogus';
+    expect(() => resolveAgentConfig({}, tempDir)).toThrow(/permission_mode/);
   });
 });

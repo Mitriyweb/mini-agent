@@ -40,3 +40,21 @@ The system SHALL support discovery of sensible default gates when project-level 
 #### Scenario: Default Gate Discovery
 - **WHEN** quality gates are enabled but no explicit config is present
 - **THEN** the runtime can discover a reasonable default set of project checks from the workspace metadata and project scripts.
+
+### Requirement: Bypass Mode Skips Quality Gates
+When the effective permission mode is `bypass`, the system SHALL NOT execute configured quality gates for agent runs in that session and SHALL report each configured gate as skipped rather than passed or failed.
+
+#### Scenario: Gates skipped under bypass
+- **GIVEN** quality gates are enabled and configured, and the session permission mode is `bypass`
+- **WHEN** an agent task completes
+- **THEN** no gate commands are executed and each gate is reported as skipped
+
+#### Scenario: Gates still run in normal mode
+- **GIVEN** quality gates are enabled and the session permission mode is `normal` or auto-approve only
+- **WHEN** an agent task completes
+- **THEN** configured gates execute and their results determine the verification state as before
+
+#### Scenario: Bypass does not mask gate configuration errors
+- **GIVEN** quality gate configuration is invalid and the session permission mode is `bypass`
+- **WHEN** the session starts
+- **THEN** configuration validation still reports the invalid gate configuration rather than silently ignoring it

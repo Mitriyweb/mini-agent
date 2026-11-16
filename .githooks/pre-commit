@@ -2,5 +2,14 @@
 
 set -eu
 
+stray_files=$(git ls-files --others --exclude-standard | grep -v / || true)
+if [ -n "$stray_files" ]; then
+  printf '%s\n' 'Pre-commit check failed: untracked files at repository root:'
+  printf '%s\n' "$stray_files" | sed 's/^/  /'
+  printf '%s\n' 'These may be accidental artifacts (e.g. shell redirect typos).'
+  printf '%s\n' 'Stage intentional files with git add, or remove stray files.'
+  exit 1
+fi
+
 printf '%s\n' 'Running pre-commit checks...'
 bun run verify

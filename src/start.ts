@@ -14,6 +14,7 @@ import { defaultProviderRegistry, ProviderRegistry } from './agent/providers/reg
 import { registerCustomProviders } from './agent/providers/custom.ts';
 import { Workspace } from './agent/workspace.ts';
 import { AgentResultStatus, SubagentPhase, type AgentEvent } from './types/agent.ts';
+import { PermissionMode } from './types/permissions.ts';
 import { resolveAgentConfig, type PartialAgentConfig } from './agent/config.ts';
 import { validateProfileName } from './agent/profiles.ts';
 import { Logger, type LogLevel } from './agent/logging.ts';
@@ -69,6 +70,8 @@ export interface ParsedCLIOptions {
   configPath?: string;
   /** Selected agent profile name (e.g. planner, developer, reviewer, qa). */
   profile?: string;
+  /** Raw permission mode value from CLI ('normal', 'bypass', 'yolo', 'dangerous'); normalized during config resolution. */
+  permissionMode?: string;
 }
 
 export const printHelp = () => {
@@ -117,6 +120,8 @@ Common options:
   --no-review                 Disable external review for the current run
   --review-provider <id>      Provider to use for external review (e.g. openai, anthropic)
   --profile <name>            Apply a named role profile (default, planner, developer, reviewer, qa)
+  --permission-mode <mode>    Permission mode: normal (default), bypass (aliases: yolo, dangerous)
+  --bypass                    Shortcut for --permission-mode bypass (auto-approve all, skip quality gates)
   -v, --version               Show the installed version
   -h, --help                  Show this help text
 
@@ -127,6 +132,12 @@ REPL commands:
   /log-level [level]     Change current session log level (off, normal, verbose)
   /cost-tracking [on|off|toggle]  Toggle LLM cost tracking for this session
   /system-prompt [on|off|toggle] Toggle built-in system prompt for this session
+  /auto-approve [on|off]  Toggle or set approval prompts
+  /mode [normal|bypass]   Show or switch permission mode
+  /bypass                 Switch to bypass mode (auto-approve all, skip quality gates)
+  /yolo                   Alias for /bypass
+  /dangerous              Alias for /bypass
+  /normal                 Switch back to normal permission mode
   /workflows             List available workflow shortcuts
   /skills                List available skills
   /exit                  Exit the interactive session
@@ -165,6 +176,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         'review-provider': { type: 'string' },
         'review-authorized-provider': { type: 'string' },
         profile: { type: 'string' },
+        'permission-mode': { type: 'string' },
+        bypass: { type: 'boolean', default: false },
         version: { type: 'boolean', short: 'v', default: false },
         help: { type: 'boolean', short: 'h', default: false },
       },
@@ -238,6 +251,9 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
 
     const configPath = parsed.values.config as string | undefined;
     const profile = (parsed.values as Record<string, unknown>).profile as string | undefined;
+    const permissionMode = parsed.values.bypass
+      ? 'bypass'
+      : (parsed.values['permission-mode'] as string | undefined);
     const reviewEnabled = parsed.values.review === true ? true : parsed.values['no-review'] === true ? false : undefined;
     const reviewAuthorizedProvider =
       (parsed.values['review-provider'] as string | undefined) ??
@@ -291,6 +307,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       systemPromptEnabled,
       configPath,
       profile,
+      permissionMode,
       reviewEnabled,
       reviewAuthorizedProvider,
     };
@@ -314,6 +331,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     let systemPromptEnabled: boolean | undefined;
     let configPath: string | undefined;
     let profile: string | undefined;
+    let permissionMode: string | undefined;
     let reviewEnabled: boolean | undefined;
     let reviewAuthorizedProvider: string | undefined;
     const taskParts: string[] = [];
@@ -372,6 +390,10 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         reviewAuthorizedProvider = args[++i];
       } else if (arg === '--profile' && i + 1 < args.length) {
         profile = args[++i];
+      } else if (arg === '--permission-mode' && i + 1 < args.length) {
+        permissionMode = args[++i];
+      } else if (arg === '--bypass' || arg === '--yolo' || arg === '--dangerous') {
+        permissionMode = 'bypass';
       } else if (
         !arg.startsWith('-') &&
         taskParts.length === 0 &&
@@ -412,10 +434,40 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       systemPromptEnabled,
       configPath,
       profile,
+      permissionMode,
       reviewEnabled,
       reviewAuthorizedProvider,
     };
   }
+};
+
+export type PermissionModeCommand =
+  | { kind: 'show' }
+  | { kind: 'set'; mode: PermissionMode }
+  | { kind: 'invalid' }
+  | { kind: 'none' };
+
+/**
+ * Parse an interactive permission-mode slash command.
+ * `/mode` shows the current mode, `/mode <mode>` sets it, and the
+ * `/bypass` `/yolo` `/dangerous` `/normal` shortcuts set it directly.
+ */
+export const parsePermissionModeCommand = (input: string): PermissionModeCommand => {
+  const trimmed = input.trim();
+  if (trimmed === '/mode') return { kind: 'show' };
+  if (trimmed === '/bypass' || trimmed === '/yolo' || trimmed === '/dangerous') {
+    return { kind: 'set', mode: PermissionMode.BYPASS };
+  }
+  if (trimmed === '/normal') return { kind: 'set', mode: PermissionMode.NORMAL };
+  if (trimmed.startsWith('/mode ')) {
+    const value = trimmed.slice('/mode'.length).trim().toLowerCase();
+    if (value === 'normal') return { kind: 'set', mode: PermissionMode.NORMAL };
+    if (value === 'bypass' || value === 'yolo' || value === 'dangerous') {
+      return { kind: 'set', mode: PermissionMode.BYPASS };
+    }
+    return { kind: 'invalid' };
+  }
+  return { kind: 'none' };
 };
 
 export const createEventHandler = (logger: Logger) => {
@@ -531,6 +583,7 @@ export const main = async () => {
     baseURL: options.customUrl,
     maxSteps: options.maxSteps,
     autoApprove: options.autoApprove,
+    permissionMode: options.permissionMode,
     configPath: options.configPath,
     profile: options.profile,
   };
@@ -555,7 +608,7 @@ export const main = async () => {
   registerCustomProviders(interactiveRegistry, resolvedConfig.customProviders);
 
   let provider = createProvider(providerOptions);
-  const permissions = createPermissions({ autoApprove: resolvedConfig.autoApprove }, workspace);
+  const permissions = createPermissions({ autoApprove: resolvedConfig.autoApprove, permissionMode: resolvedConfig.permissionMode }, workspace);
   let durableRun: DurableRun | undefined;
   const removeInterruptHandler = installInterruptHandler(() => {
     durableRun?.interrupt();
@@ -571,6 +624,7 @@ export const main = async () => {
     console.log(`Base URL    : ${provider.baseURL}`);
     console.log(`Model       : ${provider.model}`);
     console.log(`AutoApprove : ${resolvedConfig.autoApprove ? 'YES' : 'NO'}`);
+    console.log(`PermMode    : ${resolvedConfig.permissionMode}`);
     console.log(`Log Level   : ${resolvedConfig.logging.level}`);
     console.log(`Cost Track  : ${resolvedConfig.costTracking.enabled ? 'YES' : 'NO'}`);
     console.log(`Skills      : ${resolvedConfig.skills.enabled ? filteredSkills.map((s) => s.name).join(', ') || '(none)' : 'DISABLED'}`);
@@ -630,6 +684,7 @@ export const main = async () => {
         review: resolvedConfig.review,
         signal: abortController.signal,
         subagents: resolvedConfig.subagents,
+        permissionMode: resolvedConfig.permissionMode,
       });
 
       const result = await orchestrator.run();
@@ -773,6 +828,7 @@ export const main = async () => {
         qualityGates: resolvedConfig.qualityGates,
         review: resolvedConfig.review,
         subagents: resolvedConfig.subagents,
+        permissionMode: resolvedConfig.permissionMode,
         customProviders: resolvedConfig.customProviders,
       });
 
@@ -813,7 +869,16 @@ export const main = async () => {
     skills: filteredSkills,
   });
   const rl = createInterface({ input: process.stdin, output: process.stdout, completer });
-  const permissionsRepl = createPermissions({ autoApprove: resolvedConfig.autoApprove, rl }, workspace);
+  const permissionsRepl = createPermissions({
+    autoApprove: resolvedConfig.autoApprove,
+    permissionMode: resolvedConfig.permissionMode,
+    rl,
+    onPermissionModeChange: (mode) => {
+      if (!logger.isOff()) {
+        console.log(color.warn(`\nPermission mode switched to ${mode} for this session.\n`));
+      }
+    },
+  }, workspace);
   const removeInterruptHandlerRepl = installInterruptHandler(() => {
     rl.close();
     permissionsRepl.close();
@@ -922,6 +987,11 @@ export const main = async () => {
         console.log('  /skills              List available skills');
         console.log('  /max-steps <number>  Change the step limit for new tasks');
         console.log('  /auto-approve [on|off]  Toggle or set approval prompts');
+        console.log('  /mode [normal|bypass]   Show or switch permission mode');
+        console.log('  /bypass                 Switch to bypass mode (auto-approve all, skip quality gates)');
+        console.log('  /yolo                   Alias for /bypass');
+        console.log('  /dangerous              Alias for /bypass');
+        console.log('  /normal                 Switch back to normal permission mode');
         console.log('  /exit                Exit the interactive session');
         console.log('  /quit                Exit the interactive session');
 
@@ -935,6 +1005,7 @@ export const main = async () => {
         console.log(`  System Prompt       : ${resolvedConfig.systemPrompt.enabled ? 'ENABLED' : 'DISABLED'}`);
         console.log(`  --max-steps ${sessionMaxSteps}   Maximum agent steps for each task`);
         console.log(`  --auto-approve ${sessionAutoApprove ? 'on' : 'off'}  Skip tool approval prompts`);
+        console.log(`  Permission Mode     : ${permissionsRepl.getPermissionMode()}`);
 
         console.log(color.info('\n--- Workflows ---'));
         if (workflows.length === 0) {
@@ -990,6 +1061,21 @@ export const main = async () => {
         sessionAutoApprove = value === 'on' || (value !== 'off' && !sessionAutoApprove);
         permissionsRepl.setAutoApprove(sessionAutoApprove);
         console.log(color.success(`Auto-approve ${sessionAutoApprove ? 'enabled' : 'disabled'}.\n`));
+        continue;
+      }
+
+      const modeCommand = parsePermissionModeCommand(trimmed);
+      if (modeCommand.kind === 'show') {
+        console.log(color.info(`\nPermission mode: ${permissionsRepl.getPermissionMode()}\n`));
+        continue;
+      }
+      if (modeCommand.kind === 'invalid') {
+        console.log(color.warn('Usage: /mode [normal|bypass]\n'));
+        continue;
+      }
+      if (modeCommand.kind === 'set') {
+        permissionsRepl.setPermissionMode(modeCommand.mode);
+        console.log(color.success(`Permission mode set to ${modeCommand.mode} for this session.\n`));
         continue;
       }
 
@@ -1069,6 +1155,7 @@ export const main = async () => {
           usageTracker,
           qualityGates: resolvedConfig.qualityGates,
           customProviders: resolvedConfig.customProviders,
+          permissionMode: resolvedConfig.permissionMode,
         });
         priorMessages = result.messages;
 

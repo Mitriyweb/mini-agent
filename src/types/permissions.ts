@@ -29,10 +29,16 @@ export interface PermissionConfig {
   rules: PermissionRule[];
 }
 
+export enum PermissionMode {
+  NORMAL = 'normal',
+  BYPASS = 'bypass',
+}
+
 export enum PermissionDecisionKind {
   ALLOW_ONCE = 'allow-once',
   ALLOW_SESSION = 'allow-session',
   ALLOW_PERSISTENT = 'allow-persistent',
+  BYPASS = 'bypass',
   DENY = 'deny',
 }
 
@@ -54,6 +60,10 @@ export type AskDecisionCallback = (
 
 export interface PermissionsOptions {
   autoApprove?: boolean;
+  /** Effective permission mode. 'bypass' auto-approves prompts while deny rules and trust-root containment still apply. */
+  permissionMode?: PermissionMode;
+  /** Called when the mode changes mid-session (approval-prompt bypass option or setPermissionMode). */
+  onPermissionModeChange?: (mode: PermissionMode) => void;
   ask?: (description: string) => Promise<boolean> | boolean;
   askDecision?: AskDecisionCallback;
   rl?: import('node:readline/promises').Interface | null;
@@ -65,6 +75,8 @@ export interface PermissionsOptions {
 export interface Permissions {
   approve: (tool: Tool, args: any) => Promise<boolean>;
   setAutoApprove: (enabled: boolean) => void;
+  setPermissionMode: (mode: PermissionMode) => void;
+  getPermissionMode: () => PermissionMode;
   close: () => void;
   getManager?: () => any;
 }

@@ -42,6 +42,7 @@ export interface OrchestratorOptions {
   qualityGates?: AgentOptions['qualityGates'];
   review?: AgentOptions['review'];
   subagents?: AgentOptions['subagents'];
+  permissionMode?: AgentOptions['permissionMode'];
   signal?: AbortSignal;
   /** Optional runner override for tests/mocks */
   agentRunner?: (options: AgentOptions) => Promise<any>;
@@ -220,6 +221,7 @@ export class OpenSpecOrchestrator {
             qualityGates: this.options.qualityGates,
             review: this.options.review,
             subagents: this.options.subagents,
+            permissionMode: this.options.permissionMode,
             signal: this.options.signal,
           });
         } catch (err) {
@@ -240,7 +242,8 @@ export class OpenSpecOrchestrator {
             gateFailuresText = formatQualityGateResults(qualityGateResults);
             console.log(color.error(`Tests / Quality Gates: FAIL`));
           } else if (qualityGateResults.length > 0) {
-            console.log(color.success(`Tests / Quality Gates: PASS`));
+            const allSkipped = qualityGateResults.every((r) => r.status === 'skipped');
+            console.log(allSkipped ? color.warn('Tests / Quality Gates: SKIPPED (bypass mode)') : color.success('Tests / Quality Gates: PASS'));
           }
         } else {
           lastError = agentError instanceof Error ? agentError.message : String(agentError);

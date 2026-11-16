@@ -148,6 +148,8 @@ Options:
   --system-prompt             Enable standard built-in system prompt (default)
   --no-system-prompt          Disable standard built-in system prompt
   --config <path>             Path to configuration YAML/JSON file
+  --permission-mode <mode>    Permission mode: normal (default), bypass (aliases: yolo, dangerous)
+  --bypass                    Shortcut for --permission-mode bypass
   -v, --version               Show the installed version
   -h, --help                  Show this help text
 ```
@@ -290,6 +292,12 @@ CLI flags:
 
 Note: `--max-retries` is distinct and controls OpenSpec task retries on permanent failures.
 
+### Permission Modes
+
+`permission_mode` selects how tool approvals behave for the session. The default `normal` mode prompts for sensitive operations. `bypass` mode (aliases `yolo`, `dangerous`) auto-approves every tool prompt — including CLI review bundle transmission — and skips configured quality gates (reported as `skipped`, never executed). Deny permission rules and workspace/git-root containment still apply in bypass mode, and read-only subagents remain read-only regardless of mode.
+
+Set it via `permission_mode: bypass` in the config file, `MINI_AGENT_PERMISSION_MODE`, `--permission-mode bypass` / `--bypass` on the CLI, or in-session with `/bypass`, `/yolo`, `/dangerous`, `/normal`, and `/mode`. The interactive approval dialog also offers a session-scoped bypass option. This is stronger than `-y`/`--auto-approve`, which only suppresses prompts and still runs quality gates.
+
 ### Quality Gates
 
 Quality gates are disabled by default. Set `quality_gates.enabled: true` to run explicit `gates`, or omit `gates` to discover supported `test`, `check`, `build`, and `verify` scripts from `package.json`.
@@ -356,6 +364,7 @@ CLI reviewer details:
 | `OPENAI_BASE_URL` | `http://localhost:8787/v1` | Base URL for OpenAI/Router |
 | `OPENAI_API_KEY` | `dummy` | API key for OpenAI / Model Router |
 | `AUTO_APPROVE` | `false` | Set to `true` to skip permission prompts |
+| `MINI_AGENT_PERMISSION_MODE` | `normal` | Permission mode: `normal` or `bypass` (aliases `yolo`, `dangerous`) |
 
 ---
 
@@ -415,6 +424,9 @@ In interactive mode (`mini-agent`), the following built-in slash commands are av
 | `/skills` | List active skills |
 | `/max-steps <number>` | Set maximum execution steps for new tasks |
 | `/auto-approve [on\|off\|toggle]` | Toggle tool approval prompts |
+| `/mode [normal\|bypass]` | Show or switch permission mode |
+| `/bypass`, `/yolo`, `/dangerous` | Switch to bypass mode for this session |
+| `/normal` | Switch back to normal permission mode |
 | `/exit`, `/quit` | Exit the interactive session |
 
 > In the interactive session, provider and model changes should be performed through slash commands that start with `/`. The environment variables `PROVIDER`, `MODEL`, `OPENAI_BASE_URL`, and `OPENAI_API_KEY` remain useful as defaults for a new session, but the runtime controls are the slash commands above.

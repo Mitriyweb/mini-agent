@@ -18,12 +18,13 @@ import { createWriteTool } from '../tools/write.ts';
 import { createClaudeReviewTool, createCodexReviewTool } from '../tools/cli-review.ts';
 import { ToolRegistry } from '../tools/registry.ts';
 import { AgentResultStatus, type AgentEvent, type AgentOptions, type AgentResult } from '../types/agent.ts';
+import { PermissionMode } from '../types/permissions.ts';
 import type { ToolEnvironment } from '../types/tools.ts';
 import { Logger, type LogLevel, type LoggingConfig, AuditLogger } from './logging.ts';
 import { UsageTracker, type CostTrackingConfig } from './usage-tracker.ts';
 import { filterSkills } from './skills.ts';
 import { resolveSystemPrompt } from './system-prompt.ts';
-import { executeQualityGates, formatQualityGateResults, hasRequiredGateFailure, type QualityGateResult } from './quality-gates.ts';
+import { executeQualityGates, formatQualityGateResults, hasRequiredGateFailure, skippedQualityGateResults, type QualityGateResult } from './quality-gates.ts';
 import { ReviewOrchestrator, type ReviewConfig } from './review-orchestrator.ts';
 import { executeReview, MalformedReviewResponseError } from './review-provider.ts';
 import { createProvider } from './llm.ts';
@@ -295,6 +296,7 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
           subagentDepth: subagentDepth + 1,
           forceReadOnlyTools: childReadOnly,
           customProviders: options.customProviders,
+          permissionMode: options.permissionMode,
         });
         return { status: 'completed', text: childResult.text, usageSummary: childResult.usageSummary };
       } catch (error) {
@@ -362,11 +364,14 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
     if (calls.length === 0) {
       const finalText = text || EMPTY_REPLY;
       await emit('assistant', { text: finalText });
-      const qualityGateResults = await executeQualityGates({
-        config: options.qualityGates ?? { enabled: false, gates: [] },
-        workspace,
-        permissions,
-      });
+      const effectivePermissionMode = permissions.getPermissionMode?.() ?? options.permissionMode ?? PermissionMode.NORMAL;
+      const qualityGateResults = effectivePermissionMode === PermissionMode.BYPASS
+        ? skippedQualityGateResults(options.qualityGates ?? { enabled: false, gates: [] }, workspace)
+        : await executeQualityGates({
+            config: options.qualityGates ?? { enabled: false, gates: [] },
+            workspace,
+            permissions,
+          });
       lastQualityGateResults = qualityGateResults;
       if (qualityGateResults.length > 0) await emit('quality-gates', { results: qualityGateResults });
       if (hasRequiredGateFailure(qualityGateResults)) {

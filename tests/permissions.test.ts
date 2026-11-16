@@ -22,6 +22,7 @@ import {
   PermissionMatchKind,
   type PermissionRule,
 } from '../src/types/permissions.ts';
+import { TrustKind } from '../src/types/tools.ts';
 
 describe('Permissions System - Matcher Unit Tests', () => {
   it('normalizeCommand handles spaces and quotes correctly', () => {
@@ -341,5 +342,104 @@ describe('Serialized approval queue for concurrent subagents', () => {
 
     expect(results).toEqual([true, true, true]);
     expect(peak).toBe(1);
+  });
+});
+
+describe('Bypass permission mode', () => {
+  const bypassTool = {
+    needsApproval: true,
+    definition: {
+      type: 'function' as const,
+      function: { name: 'bash', description: 'Run bash', parameters: {} },
+    },
+    describe: () => 'run command',
+  };
+
+  it('auto-approves approval prompts without interactive input', async () => {
+    const permissions = createPermissions({ permissionMode: 'bypass' });
+    expect(permissions.getPermissionMode()).toBe('bypass');
+    // No rl/askDecision provided: a normal-mode call would hang or fail;
+    // bypass must resolve immediately.
+    expect(await permissions.approve(bypassTool, { command: 'rm -rf /tmp/x' })).toBe(true);
+    permissions.close();
+  });
+
+  it('deny rules still block in bypass mode', async () => {
+    const configPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mini-agent-deny-')), 'perms.json');
+    const manager = new PermissionManager({ configPath });
+    manager.addPersistentRule({ effect: PermissionEffect.DENY, pattern: 'git push *', match: PermissionMatchKind.GLOB });
+    const permissions = createPermissions({ permissionMode: 'bypass', manager });
+
+    expect(await permissions.approve(bypassTool, { command: 'git push origin main' })).toBe(false);
+    expect(await permissions.approve(bypassTool, { command: 'git status' })).toBe(true);
+    permissions.close();
+  });
+
+  it('path-scoped tools that escape the trust root fail closed in bypass', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mini-agent-root-'));
+    const workspace = { root: dir, gitRoot: dir } as any;
+    const pathTool = {
+      needsApproval: true,
+      trust: TrustKind.PATH,
+      definition: {
+        type: 'function' as const,
+        function: { name: 'write', description: 'Write file', parameters: {} },
+      },
+      describe: () => 'write file',
+    };
+    const permissions = createPermissions({ permissionMode: 'bypass' }, workspace);
+
+    expect(await permissions.approve(pathTool, { path: 'inside.txt' })).toBe(true);
+    expect(await permissions.approve(pathTool, { path: '../outside.txt' })).toBe(false);
+    permissions.close();
+  });
+
+  it('interactive prompt option 6 approves and switches the session to bypass', async () => {
+    const configPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mini-agent-prompt-')), 'perms.json');
+    const inputStream = new PassThrough();
+    const outputStream = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+    const rl = createInterface({ input: inputStream, output: outputStream });
+    const permissions = createPermissions({ configPath, rl });
+
+    const approvePromise = permissions.approve(bypassTool, { command: 'git commit -m "x"' });
+    setImmediate(() => inputStream.write('6\n'));
+
+    expect(await approvePromise).toBe(true);
+    expect(permissions.getPermissionMode()).toBe('bypass');
+
+    // Subsequent approvals resolve without prompting.
+    expect(await permissions.approve(bypassTool, { command: 'rm -rf build' })).toBe(true);
+
+    // Nothing was persisted to the permission store.
+    expect(new PermissionStore(configPath).load().rules).toEqual([]);
+    rl.close();
+    permissions.close();
+  });
+
+  it('askDecision BYPASS kind approves and switches mode', async () => {
+    const permissions = createPermissions({
+      askDecision: () => ({ kind: PermissionDecisionKind.BYPASS }),
+    });
+    expect(await permissions.approve(bypassTool, { command: 'git commit -m "y"' })).toBe(true);
+    expect(permissions.getPermissionMode()).toBe('bypass');
+    permissions.close();
+  });
+
+  it('setPermissionMode notifies the change callback and /normal restores prompting', async () => {
+    const seen: string[] = [];
+    const permissions = createPermissions({
+      onPermissionModeChange: (mode) => seen.push(mode),
+      ask: () => false,
+    });
+
+    permissions.setPermissionMode('bypass');
+    expect(permissions.getPermissionMode()).toBe('bypass');
+    expect(await permissions.approve(bypassTool, { command: 'anything' })).toBe(true);
+
+    permissions.setPermissionMode('normal');
+    expect(seen).toEqual(['bypass', 'normal']);
+    // Back in normal mode the ask callback denies.
+    expect(await permissions.approve(bypassTool, { command: 'anything else' })).toBe(false);
+    permissions.close();
   });
 });
