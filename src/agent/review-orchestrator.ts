@@ -11,6 +11,16 @@ import { FileChangeStatus, BaselineType, ReviewResultStatus, ExecutionStatus } f
 import { Workspace } from './workspace.ts';
 import { redactSecrets } from './logging.ts';
 
+// Ambient GIT_* variables (exported by git hooks, CI, etc.) must not redirect
+// git commands away from the workspace repository.
+const gitEnv = (): NodeJS.ProcessEnv => {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('GIT_')) delete env[key];
+  }
+  return env;
+};
+
 /**
  * Configuration for external review feature.
  */
@@ -117,6 +127,7 @@ export class ReviewOrchestrator {
         const ref = execFileSync('git', ['rev-parse', 'HEAD'], {
           cwd: gitRoot,
           encoding: 'utf8',
+          env: gitEnv(),
         }).trim();
         return { type: BaselineType.GIT_HEAD, ref, timestamp };
       }
@@ -150,11 +161,12 @@ export class ReviewOrchestrator {
       }
 
       const safeRef = this.validateGitRef(baseline.ref);
+      const gitOptions = { cwd: gitRoot, encoding: 'utf8' as const, env: gitEnv() };
       const diffOutputs = [
-        execFileSync('git', ['diff', '--name-status', '--find-renames', safeRef, 'HEAD'], { cwd: gitRoot, encoding: 'utf8' }),
-        execFileSync('git', ['diff', '--name-status', '--find-renames', safeRef], { cwd: gitRoot, encoding: 'utf8' }),
-        execFileSync('git', ['diff', '--cached', '--name-status', '--find-renames'], { cwd: gitRoot, encoding: 'utf8' }),
-        execFileSync('git', ['diff', '--name-status', '--find-renames'], { cwd: gitRoot, encoding: 'utf8' }),
+        execFileSync('git', ['diff', '--name-status', '--find-renames', safeRef, 'HEAD'], gitOptions),
+        execFileSync('git', ['diff', '--name-status', '--find-renames', safeRef], gitOptions),
+        execFileSync('git', ['diff', '--cached', '--name-status', '--find-renames'], gitOptions),
+        execFileSync('git', ['diff', '--name-status', '--find-renames'], gitOptions),
       ];
 
       const seen = new Map<string, ReviewRequest['changes'][number]>();
@@ -202,7 +214,7 @@ export class ReviewOrchestrator {
         }
       }
 
-      const statusOutput = execFileSync('git', ['status', '--porcelain'], { cwd: gitRoot, encoding: 'utf8' });
+      const statusOutput = execFileSync('git', ['status', '--porcelain'], gitOptions);
       for (const line of statusOutput.split('\n').filter((value) => value.trim())) {
         if (!line.startsWith('??')) continue;
         const filePath = line.substring(3).trim();
@@ -330,6 +342,7 @@ export class ReviewOrchestrator {
               cwd: gitRoot,
               encoding: 'utf8',
               maxBuffer: 10 * 1024 * 1024,
+              env: gitEnv(),
             });
           } catch {
             return null;
@@ -347,6 +360,7 @@ export class ReviewOrchestrator {
               cwd: gitRoot,
               encoding: 'utf8',
               maxBuffer: 10 * 1024 * 1024,
+              env: gitEnv(),
             });
           } catch {
             return null;

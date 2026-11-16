@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { ReviewOrchestrator, type ReviewConfig } from '../src/agent/review-orchestrator.js';
@@ -9,14 +10,23 @@ import { BaselineType, ReviewVerdict, ExecutionStatus, ReviewResultStatus } from
 import type { Provider } from '../src/types/llm.js';
 import { Workspace } from '../src/agent/workspace.js';
 
+// Git exports GIT_DIR/GIT_INDEX_FILE/etc. into hook environments; strip them so
+// test-spawned git commands always use the temp repo, never the parent repo.
+const gitEnv = (): NodeJS.ProcessEnv => {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('GIT_')) delete env[key];
+  }
+  return env;
+};
+
 describe('External Review: ReviewOrchestrator', () => {
   let tempDir: string;
   let workspace: Workspace;
 
   beforeEach(() => {
-    tempDir = `${import.meta.dir}/../.test-workspace-${Date.now()}`;
-    fs.mkdirSync(tempDir, { recursive: true });
-    workspace = new Workspace(tempDir, tempDir, null);
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mini-agent-ext-review-'));
+    workspace = new Workspace(tempDir, fs.realpathSync(tempDir), null);
   });
 
   afterEach(() => {
@@ -107,19 +117,19 @@ describe('External Review: ReviewOrchestrator', () => {
 
     it('marks redaction as applied when a secret is present', () => {
       const config: ReviewConfig = { enabled: false };
-      const gitWorkspace = new Workspace(tempDir, tempDir, tempDir);
+      const gitWorkspace = new Workspace(tempDir, fs.realpathSync(tempDir), tempDir);
       const orchestrator = new ReviewOrchestrator(gitWorkspace, config);
-      execSync('git init', { cwd: tempDir, stdio: 'pipe' });
-      execSync('git config user.email "test@example.com"', { cwd: tempDir, stdio: 'pipe' });
-      execSync('git config user.name "Test User"', { cwd: tempDir, stdio: 'pipe' });
+      execSync('git init', { cwd: tempDir, stdio: 'pipe', env: gitEnv() });
+      execSync('git config user.email "test@example.com"', { cwd: tempDir, stdio: 'pipe', env: gitEnv() });
+      execSync('git config user.name "Test User"', { cwd: tempDir, stdio: 'pipe', env: gitEnv() });
       fs.writeFileSync(path.join(tempDir, 'config.txt'), 'API_KEY=sk-1234567890abcdef');
-      execSync('git add config.txt', { cwd: tempDir, stdio: 'pipe' });
-      execSync('git commit -m "init"', { cwd: tempDir, stdio: 'pipe' });
+      execSync('git add config.txt', { cwd: tempDir, stdio: 'pipe', env: gitEnv() });
+      execSync('git commit -m "init"', { cwd: tempDir, stdio: 'pipe', env: gitEnv() });
       fs.appendFileSync(path.join(tempDir, 'config.txt'), '\nAPI_KEY=sk-1234567890abcdef');
 
       const request = orchestrator.buildReviewRequest('test-run-3', 'task', {
         type: BaselineType.GIT_HEAD,
-        ref: execSync('git rev-parse HEAD', { cwd: tempDir, encoding: 'utf8' }).trim(),
+        ref: execSync('git rev-parse HEAD', { cwd: tempDir, encoding: 'utf8', env: gitEnv() }).trim(),
         timestamp: new Date().toISOString(),
       }, {
         status: ExecutionStatus.COMPLETED,
@@ -237,9 +247,8 @@ describe('External Review: Data Safety', () => {
   let workspace: Workspace;
 
   beforeEach(() => {
-    tempDir = `${import.meta.dir}/../.test-workspace-safety-${Date.now()}`;
-    fs.mkdirSync(tempDir, { recursive: true });
-    workspace = new Workspace(tempDir, tempDir, null);
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mini-agent-ext-review-safety-'));
+    workspace = new Workspace(tempDir, fs.realpathSync(tempDir), null);
   });
 
   afterEach(() => {
