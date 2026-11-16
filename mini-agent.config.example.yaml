@@ -59,3 +59,41 @@ subagents:
   max_steps: 30                 # Default per-child step limit
   allow_nested: false           # Allow write-capable children to delegate further
 
+# Top-level runtime options (all optional; env vars and CLI flags override these)
+# provider: router               # Built-in provider id or a custom `providers:` id
+# model: model-router-auto       # Model id for the selected provider
+# baseURL: ""                    # OpenAI-compatible base URL override
+# max_steps: 30                  # Max agent steps per run
+# auto_approve: false            # Auto-approve tool calls (prefer permission_mode)
+
+# External review (opt-in, disabled by default)
+external_review:
+  enabled: false
+  authorized_provider: ""       # Optional provider id allowed to run reviews
+  retries:
+    maxAttempts: 3
+    initialDelayMs: 1000
+    backoffFactor: 2
+
+# Custom providers: arbitrary OpenAI-compatible endpoints.
+# See README "Custom Providers" for the full field reference.
+providers:
+  llmlite:
+    name: LLM Lite
+    baseURL: https://llmlite.example.com/v1
+    apiKeyEnvVar: LLMLITE_API_KEY
+    defaultModel: auto
+    fallbackModels: []
+    models:
+      type: openai-compatible   # openai-compatible | endpoint | static
+
+# Quality gates run after agent tasks (opt-in, disabled by default)
+quality_gates:
+  enabled: false
+  gates:
+    - id: lint
+      name: Lint
+      command: bun run lint
+      required: true
+      timeout_ms: 120000
+

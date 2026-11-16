@@ -16,6 +16,7 @@ import { Workspace } from './agent/workspace.ts';
 import { AgentResultStatus, SubagentPhase, type AgentEvent } from './types/agent.ts';
 import { PermissionMode } from './types/permissions.ts';
 import { resolveAgentConfig, type PartialAgentConfig } from './agent/config.ts';
+import { runConfigWizard, type ConfigWizardFormat } from './agent/config-wizard.ts';
 import { validateProfileName } from './agent/profiles.ts';
 import { Logger, type LogLevel } from './agent/logging.ts';
 import { UsageTracker } from './agent/usage-tracker.ts';
@@ -42,6 +43,7 @@ export enum ParsedCommand {
   Resume = 'resume',
   Apply = 'apply',
   Review = 'review',
+  Config = 'config',
 }
 
 export interface ParsedCLIOptions {
@@ -72,6 +74,11 @@ export interface ParsedCLIOptions {
   profile?: string;
   /** Raw permission mode value from CLI ('normal', 'bypass', 'yolo', 'dangerous'); normalized during config resolution. */
   permissionMode?: string;
+  /** `mini-agent config` wizard flags. */
+  configDefaults?: boolean;
+  configDryRun?: boolean;
+  configForce?: boolean;
+  configFormat?: ConfigWizardFormat;
 }
 
 export const printHelp = () => {
@@ -87,6 +94,7 @@ Usage:
   mini-agent review [options] <run-id>
   mini-agent memory show
   mini-agent memory add "new knowledge"
+  mini-agent config [options]      Interactive wizard that writes mini-agent.config.yaml
 
 Quick examples:
   mini-agent "Add a small feature to the CLI"
@@ -115,7 +123,11 @@ Common options:
   --skills <skill1,skill2>    Comma-separated list of allowed skills
   --system-prompt             Enable standard built-in system prompt (default)
   --no-system-prompt          Disable standard built-in system prompt
-  --config <path>             Path to configuration YAML/JSON file
+  --config <path>             Path to configuration YAML/JSON file (for 'config': output target)
+  --defaults                  (config) Print a fully commented default config template
+  --dry-run                   (config) Print the generated config without writing
+  --force                     (config) Overwrite an existing config without confirmation
+  --format <yaml|json>        (config) Output format (default: yaml, or json for .json targets)
   --review                    Enable external review for the current run
   --no-review                 Disable external review for the current run
   --review-provider <id>      Provider to use for external review (e.g. openai, anthropic)
@@ -178,6 +190,10 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         profile: { type: 'string' },
         'permission-mode': { type: 'string' },
         bypass: { type: 'boolean', default: false },
+        defaults: { type: 'boolean', default: false },
+        'dry-run': { type: 'boolean', default: false },
+        force: { type: 'boolean', default: false },
+        format: { type: 'string' },
         version: { type: 'boolean', short: 'v', default: false },
         help: { type: 'boolean', short: 'h', default: false },
       },
@@ -261,6 +277,14 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       process.env.MINI_AGENT_EXTERNAL_REVIEW_PROVIDER ??
       process.env.EXTERNAL_REVIEW_PROVIDER;
 
+    const configFormatRaw = (parsed.values.format as string | undefined)?.toLowerCase();
+    const configFormat: ConfigWizardFormat | undefined =
+      configFormatRaw === 'yaml' || configFormatRaw === 'yml'
+        ? 'yaml'
+        : configFormatRaw === 'json'
+          ? 'json'
+          : undefined;
+
     let workspaceDir = (parsed.values.dir as string | undefined) || process.cwd();
     const positionals = parsed.positionals;
     const taskParts: string[] = [];
@@ -279,7 +303,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       }
     }
 
-    const command = taskParts[0] === ParsedCommand.Run || taskParts[0] === ParsedCommand.Resume || taskParts[0] === ParsedCommand.Apply || taskParts[0] === ParsedCommand.Review
+    const command = taskParts[0] === ParsedCommand.Run || taskParts[0] === ParsedCommand.Resume || taskParts[0] === ParsedCommand.Apply || taskParts[0] === ParsedCommand.Review || taskParts[0] === ParsedCommand.Config
       ? taskParts.shift() as ParsedCommand
       : undefined;
     const runId = command === ParsedCommand.Resume || command === ParsedCommand.Review ? taskParts.shift() : undefined;
@@ -310,6 +334,10 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       permissionMode,
       reviewEnabled,
       reviewAuthorizedProvider,
+      configDefaults: Boolean(parsed.values.defaults),
+      configDryRun: Boolean(parsed.values['dry-run']),
+      configForce: Boolean(parsed.values.force),
+      configFormat,
     };
   } catch {
     // Fallback manual parsing
@@ -334,6 +362,10 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     let permissionMode: string | undefined;
     let reviewEnabled: boolean | undefined;
     let reviewAuthorizedProvider: string | undefined;
+    let configDefaults = false;
+    let configDryRun = false;
+    let configForce = false;
+    let configFormat: ConfigWizardFormat | undefined;
     const taskParts: string[] = [];
 
     for (let i = 0; i < args.length; i++) {
@@ -394,6 +426,16 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         permissionMode = args[++i];
       } else if (arg === '--bypass' || arg === '--yolo' || arg === '--dangerous') {
         permissionMode = 'bypass';
+      } else if (arg === '--defaults') {
+        configDefaults = true;
+      } else if (arg === '--dry-run') {
+        configDryRun = true;
+      } else if (arg === '--force') {
+        configForce = true;
+      } else if (arg === '--format' && i + 1 < args.length) {
+        const val = args[++i].toLowerCase();
+        if (val === 'yaml' || val === 'yml') configFormat = 'yaml';
+        else if (val === 'json') configFormat = 'json';
       } else if (
         !arg.startsWith('-') &&
         taskParts.length === 0 &&
@@ -406,7 +448,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       }
     }
 
-    const command = taskParts[0] === ParsedCommand.Run || taskParts[0] === ParsedCommand.Resume || taskParts[0] === ParsedCommand.Apply || taskParts[0] === ParsedCommand.Review
+    const command = taskParts[0] === ParsedCommand.Run || taskParts[0] === ParsedCommand.Resume || taskParts[0] === ParsedCommand.Apply || taskParts[0] === ParsedCommand.Review || taskParts[0] === ParsedCommand.Config
       ? taskParts.shift() as ParsedCommand
       : undefined;
     const runId = command === ParsedCommand.Resume || command === ParsedCommand.Review ? taskParts.shift() : undefined;
@@ -437,6 +479,10 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       permissionMode,
       reviewEnabled,
       reviewAuthorizedProvider,
+      configDefaults,
+      configDryRun,
+      configForce,
+      configFormat,
     };
   }
 };
@@ -543,6 +589,45 @@ export const main = async () => {
 
   if (options.version) {
     console.log(VERSION);
+    return;
+  }
+
+  if (options.command === ParsedCommand.Config) {
+    if (options.task) {
+      console.error(color.error('Usage: mini-agent config [--dir <path>] [--config <path>] [--defaults] [--dry-run] [--force] [--format yaml|json]'));
+      process.exitCode = 1;
+      return;
+    }
+    const needsPrompt = !options.configDefaults;
+    if (needsPrompt && !process.stdin.isTTY) {
+      console.error(color.error('Error: the config wizard requires an interactive terminal. Use --defaults to print a template without prompting.'));
+      process.exitCode = 1;
+      return;
+    }
+    const rl = needsPrompt ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
+    try {
+      const result = await runConfigWizard({
+        workspaceDir: options.workspaceDir,
+        targetPath: options.configPath,
+        format: options.configFormat,
+        defaultsOnly: options.configDefaults,
+        dryRun: options.configDryRun,
+        force: options.configForce,
+        ask: rl ? (q) => rl.question(q) : undefined,
+      });
+      if (result.aborted) {
+        console.log('Aborted; existing config left unchanged.');
+      } else if (result.wrote) {
+        console.log(color.success(`\nWrote ${result.path}`));
+      } else {
+        console.log(result.content);
+      }
+    } catch (err) {
+      console.error(color.error(`Error: ${(err as Error).message}`));
+      process.exitCode = 1;
+    } finally {
+      rl?.close();
+    }
     return;
   }
 

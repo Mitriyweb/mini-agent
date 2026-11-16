@@ -13,8 +13,8 @@ Run an independent code review through the installed Codex CLI (`codex`). This s
 
 ## Procedure
 
-1. Call the `codex_review` tool. Optionally pass `focus` to narrow the review (a file, module, or concern).
-2. The tool requires approval before transmitting the bundle. If approval is denied, report that the review was not run.
+1. Call the `codex_review` tool immediately — do not ask for approval in chat first. Optionally pass `focus` to narrow the review (a file, module, or concern).
+2. The tool itself requests approval interactively before transmitting the bundle. If approval is denied, report that the review was not run.
 3. The tool builds a redacted review bundle (credentials and sensitive paths removed, size-limited), writes it to an isolated temporary directory, and invokes `codex exec` non-interactively with a read-only sandbox and the bundle on stdin.
 4. Report the CLI's findings using the same format as semantic review: severity, file/line location, reasoning, and evidence; distinguish confirmed defects from uncertainty; disclose incomplete evidence.
 

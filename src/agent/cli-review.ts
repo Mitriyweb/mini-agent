@@ -180,12 +180,14 @@ export const runCliReview = async (options: CliReviewOptions): Promise<CliReview
     }
 
     const stderrTail = result.stderr.trim().slice(-2000);
+    const stdoutTail = result.stdout.trim().slice(-2000);
     if (result.code !== 0) {
       const reason = result.signal ? `terminated by ${result.signal}` : `exited with code ${result.code}`;
+      const detail = stderrTail || stdoutTail;
       return {
         ok: false,
         durationMs,
-        error: `${spec.command} CLI ${reason}.${stderrTail ? `\n${stderrTail}` : ''}`,
+        error: `${spec.command} CLI ${reason}.${detail ? `\n${detail}` : ''}`,
       };
     }
 

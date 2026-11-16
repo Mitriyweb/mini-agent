@@ -160,6 +160,20 @@ Options:
 
 `mini-agent` automatically loads `mini-agent.config.yaml`, `mini-agent.config.json`, `.mini-agentrc.yaml`, or `.mini-agentrc.json` from the workspace root (or from an explicit path specified with `--config`).
 
+### Configuration Wizard
+
+Run `mini-agent config` for an interactive wizard that walks every configurable section (logging, cost tracking, skills, system prompt, provider/model, permission mode, retry, external review, subagents, quality gates, and custom providers), validates each answer with the same rules the config loader uses, and writes a ready-to-use `mini-agent.config.yaml` in the workspace root — picked up automatically on the next run.
+
+```bash
+mini-agent config                  # interactive wizard → ./mini-agent.config.yaml
+mini-agent config --defaults       # print a fully commented default template (logging off)
+mini-agent config --dry-run        # preview generated config without writing
+mini-agent config --force          # overwrite an existing config without confirmation
+mini-agent config --config custom.yaml --format json   # custom target/format
+```
+
+Empty input keeps the current value (existing config pre-fills the prompts); invalid input is rejected and re-asked. `--defaults` works without a TTY; the interactive wizard requires one. See `mini-agent.config.example.yaml` for the full annotated option reference.
+
 ### Configuration Precedence Order
 Rules are evaluated in strict priority order (CLI arguments always take highest precedence):
 ```
