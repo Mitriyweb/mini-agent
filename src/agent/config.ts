@@ -5,7 +5,8 @@ import type { LogLevel, LoggingConfig } from './logging.ts';
 import type { CostTrackingConfig, ModelPricing } from './usage-tracker.ts';
 import type { SkillsConfig } from './skills.ts';
 import type { SystemPromptConfig } from './system-prompt.ts';
-import type { RetryConfig } from '../types/llm.ts';
+import type { RetryConfig, CustomProviderConfig } from '../types/llm.ts';
+import { normalizeCustomProviders } from './providers/custom-config.ts';
 import type { ReviewConfig } from './review-orchestrator.ts';
 import { normalizeQualityGatesConfig, type QualityGatesConfig } from './quality-gates.ts';
 import { resolveProfile } from './profiles.ts';
@@ -167,6 +168,7 @@ export interface FileConfigSchema {
     allowNested?: boolean;
     allow_nested?: boolean;
   };
+  providers?: Record<string, unknown>;
 }
 
 export interface PartialAgentConfig {
@@ -202,6 +204,7 @@ export interface AgentResolvedConfig {
   autoApprove?: boolean;
   qualityGates: QualityGatesConfig;
   subagents: SubagentsConfig;
+  customProviders: Record<string, CustomProviderConfig>;
 }
 
 const CONFIG_FILE_NAMES = [
@@ -480,6 +483,9 @@ export const resolveAgentConfig = (
   validateSubagentsConfig(subagentsCandidate);
   const subagents = resolveSubagentsConfig(subagentsCandidate);
 
+  // Custom providers (file config only; validated fail-fast)
+  const customProviders = normalizeCustomProviders(fileConfig.providers);
+
   return {
     logging: { level, filePath },
     costTracking: {
@@ -506,5 +512,6 @@ export const resolveAgentConfig = (
     autoApprove,
     qualityGates,
     subagents,
+    customProviders,
   };
 };

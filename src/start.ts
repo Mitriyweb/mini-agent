@@ -10,9 +10,10 @@ import { loadWorkflows, loadSkills, resolveSlashCommand } from './agent/customiz
 import { createProvider } from './agent/llm.ts';
 import { createPermissions } from './agent/permissions.ts';
 import { promptSelectModel, promptSelectProvider } from './agent/provider-cli.ts';
-import { defaultProviderRegistry } from './agent/providers/registry.ts';
+import { defaultProviderRegistry, ProviderRegistry } from './agent/providers/registry.ts';
+import { registerCustomProviders } from './agent/providers/custom.ts';
 import { Workspace } from './agent/workspace.ts';
-import { AgentResultStatus, type AgentEvent } from './types/agent.ts';
+import { AgentResultStatus, SubagentPhase, type AgentEvent } from './types/agent.ts';
 import { resolveAgentConfig, type PartialAgentConfig } from './agent/config.ts';
 import { validateProfileName } from './agent/profiles.ts';
 import { Logger, type LogLevel } from './agent/logging.ts';
@@ -457,7 +458,7 @@ export const createEventHandler = (logger: Logger) => {
         }
         break;
       case 'subagent':
-        if (event.phase === 'start') {
+        if (event.phase === SubagentPhase.Start) {
           logger.logNormal(color.dim(`   Subagent ${event.index + 1}/${event.total} [${event.access ?? 'write'}] started: ${String(event.task).slice(0, 80)}`));
         } else {
           const badge = event.status === 'completed' ? color.success('✔') : event.status === 'interrupted' ? color.warn('–') : color.error('✖');
@@ -548,6 +549,10 @@ export const main = async () => {
   if (resolvedConfig.model) providerOptions.model = resolvedConfig.model;
   if (resolvedConfig.baseURL) providerOptions.baseURL = resolvedConfig.baseURL;
   providerOptions.retry = resolvedConfig.retry;
+  providerOptions.customProviders = resolvedConfig.customProviders;
+
+  const interactiveRegistry = new ProviderRegistry();
+  registerCustomProviders(interactiveRegistry, resolvedConfig.customProviders);
 
   let provider = createProvider(providerOptions);
   const permissions = createPermissions({ autoApprove: resolvedConfig.autoApprove }, workspace);
@@ -768,6 +773,7 @@ export const main = async () => {
         qualityGates: resolvedConfig.qualityGates,
         review: resolvedConfig.review,
         subagents: resolvedConfig.subagents,
+        customProviders: resolvedConfig.customProviders,
       });
 
       const reviewFailed = result.reviewOutcome && result.reviewOutcome.verdict !== 'pass';
@@ -851,12 +857,12 @@ export const main = async () => {
 
       if (trimmed === '/provider' || trimmed.startsWith('/provider ')) {
         const arg = trimmed.slice('/provider'.length).trim();
-        let selectedDef = defaultProviderRegistry.get(arg);
+        let selectedDef = interactiveRegistry.get(arg);
         if (!selectedDef) {
           if (arg) {
             console.log(color.warn(`Unknown provider '${arg}'.`));
           }
-          selectedDef = await promptSelectProvider(rl, defaultProviderRegistry);
+          selectedDef = await promptSelectProvider(rl, interactiveRegistry);
         }
 
         let selectedModel = options.customModel;
@@ -869,6 +875,7 @@ export const main = async () => {
             provider: selectedDef.id,
             model: selectedModel,
             baseURL: options.customUrl,
+            customProviders: resolvedConfig.customProviders,
           });
           console.log(color.success(`\nUsing ${selectedDef.name} / ${provider.model}\n`));
         } catch (err: any) {
@@ -882,7 +889,7 @@ export const main = async () => {
         let selectedModel = arg;
 
         if (!selectedModel) {
-          const providerDef = defaultProviderRegistry.get(provider.providerId) ?? defaultProviderRegistry.get('router')!;
+          const providerDef = interactiveRegistry.get(provider.providerId) ?? interactiveRegistry.get('router')!;
           selectedModel = await promptSelectModel(rl, providerDef, {
             apiKey: provider.apiKey,
             baseURL: provider.baseURL,
@@ -894,6 +901,7 @@ export const main = async () => {
             provider: provider.providerId,
             model: selectedModel,
             baseURL: options.customUrl,
+            customProviders: resolvedConfig.customProviders,
           });
           console.log(color.success(`\nUsing ${provider.providerId} / ${provider.model}\n`));
         } catch (err: any) {
@@ -1060,6 +1068,7 @@ export const main = async () => {
           logger,
           usageTracker,
           qualityGates: resolvedConfig.qualityGates,
+          customProviders: resolvedConfig.customProviders,
         });
         priorMessages = result.messages;
 

@@ -3,7 +3,7 @@ import { createGrepTool } from '../tools/grep.ts';
 import { createReadTool } from '../tools/read.ts';
 import { TrustKind, type Tool, type ToolDefinition, type ToolEnvironment } from '../types/tools.ts';
 import type { Permissions } from '../types/permissions.ts';
-import type { AgentEvent } from '../types/agent.ts';
+import { SubagentPhase, type AgentEvent } from '../types/agent.ts';
 import type { UsageSummary } from './usage-tracker.ts';
 import { ToolRegistry } from '../tools/registry.ts';
 
@@ -175,7 +175,7 @@ export interface DelegateBatchOptions {
   runChild: ChildRunner;
   signal?: AbortSignal;
   onEvent?: (
-    phase: 'start' | 'finish',
+    phase: SubagentPhase,
     result: Omit<ChildTaskResult, 'status'> & { status?: ChildRunStatus },
   ) => Promise<void> | void;
 }
@@ -214,7 +214,7 @@ export const runDelegatedBatch = async (
       else options.signal?.addEventListener('abort', abortChild, { once: true });
 
       const base = { index, task: spec.task, access: spec.access, maxSteps: spec.maxSteps };
-      await options.onEvent?.('start', base);
+      await options.onEvent?.(SubagentPhase.Start, base);
       try {
         const outcome = await options.runChild({
           task: spec.task,
@@ -230,7 +230,7 @@ export const runDelegatedBatch = async (
           usageSummary: outcome.usageSummary,
         };
         results[index] = result;
-        await options.onEvent?.('finish', result);
+        await options.onEvent?.(SubagentPhase.Finish, result);
       } catch (error) {
         const aborted = controller.signal.aborted || options.signal?.aborted === true;
         const result: ChildTaskResult = {
@@ -239,7 +239,7 @@ export const runDelegatedBatch = async (
           error: error instanceof Error ? error.message : String(error),
         };
         results[index] = result;
-        await options.onEvent?.('finish', result);
+        await options.onEvent?.(SubagentPhase.Finish, result);
       } finally {
         controllers.delete(controller);
         options.signal?.removeEventListener('abort', abortChild);

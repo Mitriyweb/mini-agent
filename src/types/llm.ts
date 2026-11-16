@@ -26,6 +26,49 @@ export interface ProviderClientOptions {
 
 export interface ProviderOptions extends ProviderClientOptions {
   provider?: string;
+  /** User-declared custom providers from config, keyed by provider ID. */
+  customProviders?: Record<string, CustomProviderConfig>;
+}
+
+export interface CustomProviderStaticModel {
+  id: string;
+  name?: string;
+  description?: string;
+}
+
+export interface CustomProviderOpenAICompatibleDiscovery {
+  type: 'openai-compatible';
+}
+
+export interface CustomProviderEndpointDiscovery {
+  type: 'endpoint';
+  /** Absolute URL or path relative to the provider baseURL. */
+  url: string;
+  /** Dotted path to the model array inside the JSON response. */
+  itemsPath?: string;
+  idField?: string;
+  nameField?: string;
+}
+
+export interface CustomProviderStaticDiscovery {
+  type: 'static';
+  list: Array<string | CustomProviderStaticModel>;
+}
+
+export type CustomProviderModelsDiscovery =
+  | CustomProviderOpenAICompatibleDiscovery
+  | CustomProviderEndpointDiscovery
+  | CustomProviderStaticDiscovery;
+
+export interface CustomProviderConfig {
+  id: string;
+  name: string;
+  baseURL: string;
+  apiKey?: string;
+  apiKeyEnvVar?: string;
+  defaultModel: string;
+  fallbackModels: string[];
+  models: CustomProviderModelsDiscovery;
 }
 
 export interface LLMRequest {

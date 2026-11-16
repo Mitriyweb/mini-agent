@@ -1,6 +1,6 @@
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import type { Permissions } from './permissions.ts';
-import type { Provider } from './llm.ts';
+import type { Provider, CustomProviderConfig } from './llm.ts';
 import type { Workspace } from '../agent/workspace.ts';
 import type { Workflow, Skill } from '../agent/customizations.ts';
 import type { LogLevel, LoggingConfig, Logger } from '../agent/logging.ts';
@@ -19,24 +19,74 @@ export enum AgentResultStatus {
   DENIED = 'denied',
 }
 
+export enum SubagentPhase {
+  Start = 'start',
+  Finish = 'finish',
+}
+
+export interface StepEvent {
+  type: 'step';
+  step: number;
+  maxSteps: number;
+  model: string;
+}
+
+export interface ToolEvent {
+  type: 'tool';
+  name: string;
+  args: unknown;
+  argsText: string;
+}
+
+export interface ResultEvent {
+  type: 'result';
+  name: string;
+  args: unknown;
+  status: AgentResultStatus;
+  preview: string;
+}
+
+export interface AssistantEvent {
+  type: 'assistant';
+  text: string;
+}
+
+export interface QualityGatesEvent {
+  type: 'quality-gates';
+  results: QualityGateResult[];
+}
+
+export interface ReviewStartEvent {
+  type: 'review-start';
+  runId: string;
+}
+
+export interface ReviewCompleteEvent {
+  type: 'review-complete';
+  verdict: string;
+  findings: string;
+}
+
+export interface SubagentEvent {
+  type: 'subagent';
+  phase: SubagentPhase;
+  index: number;
+  total: number;
+  task: string;
+  access?: string;
+  status?: string;
+  error?: string;
+}
+
 export type AgentEvent =
-  | { type: 'step'; step: number; maxSteps: number; model: string }
-  | { type: 'tool'; name: string; args: unknown; argsText: string }
-  | { type: 'result'; name: string; args: unknown; status: AgentResultStatus; preview: string }
-  | { type: 'assistant'; text: string }
-  | { type: 'quality-gates'; results: QualityGateResult[] }
-  | { type: 'review-start'; runId: string }
-  | { type: 'review-complete'; verdict: string; findings: string }
-  | {
-      type: 'subagent';
-      phase: 'start' | 'finish';
-      index: number;
-      total: number;
-      task: string;
-      access?: string;
-      status?: string;
-      error?: string;
-    };
+  | StepEvent
+  | ToolEvent
+  | ResultEvent
+  | AssistantEvent
+  | QualityGatesEvent
+  | ReviewStartEvent
+  | ReviewCompleteEvent
+  | SubagentEvent;
 
 export interface AgentOptions {
   task: string;
@@ -67,6 +117,8 @@ export interface AgentOptions {
   subagentDepth?: number;
   /** Internal: restrict this run to the read-only inspection tool registry. */
   forceReadOnlyTools?: boolean;
+  /** User-declared custom providers from config, forwarded to provider resolution. */
+  customProviders?: Record<string, CustomProviderConfig>;
 }
 
 export interface AgentResult {

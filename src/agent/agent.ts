@@ -294,6 +294,7 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
           subagents: subagentsConfig,
           subagentDepth: subagentDepth + 1,
           forceReadOnlyTools: childReadOnly,
+          customProviders: options.customProviders,
         });
         return { status: 'completed', text: childResult.text, usageSummary: childResult.usageSummary };
       } catch (error) {
@@ -428,6 +429,7 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
             const reviewProvider = createProvider({
               provider: reviewProviderId,
               retry: reviewConfig.retries,
+              customProviders: options.customProviders,
             });
             const reviewResponse = await executeReview(
               reviewProvider,

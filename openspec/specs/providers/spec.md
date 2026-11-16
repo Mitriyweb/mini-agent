@@ -108,3 +108,31 @@ Provider API requests MUST advertise support for gzip responses, and provider cl
 - **WHEN** a provider API returns a response without gzip encoding
 - **THEN** the provider client handles it without attempting gzip decompression
 
+### Requirement: Registry Resolution of User-Defined Providers
+
+The provider registry MUST resolve user-defined provider IDs in addition to built-in providers. When `createProvider` is invoked with a provider ID that matches a configured custom provider, it MUST create an OpenAI-compatible client targeting that provider's `baseURL` with its resolved API key and model options. Built-in provider resolution and the existing implicit fallback for unknown IDs with an explicit `baseURL` MUST remain unchanged.
+
+#### Scenario: Custom provider resolves through createProvider
+
+- **WHEN** `createProvider` is called with a provider ID matching a configured custom provider
+- **THEN** it returns a client whose `providerId` is the custom ID and whose requests go to the configured `baseURL`
+
+#### Scenario: Built-in provider IDs are unaffected
+
+- **WHEN** `createProvider` is called with a built-in provider ID while custom providers are also configured
+- **THEN** the built-in provider definition is used, not a custom entry
+
+#### Scenario: Unknown ID without custom config still errors
+
+- **WHEN** `createProvider` is called with an unknown provider ID, no matching custom provider exists, and no `baseURL` option/env/config is set
+- **THEN** it throws the existing "Unknown LLM provider" error listing available providers including configured custom ones
+
+### Requirement: Model Discovery Parity for Custom Providers
+
+The provider infrastructure MUST expose `getModels` for custom providers with the same fallback contract as built-ins: return discovered models when available, otherwise return the default model rather than throwing.
+
+#### Scenario: getModels invoked on custom provider definition
+
+- **WHEN** `getModels` is invoked on a custom provider definition with valid discovery configuration
+- **THEN** it returns models discovered via the configured method, or the `defaultModel` fallback on failure
+

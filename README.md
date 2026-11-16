@@ -232,7 +232,39 @@ subagents:
   max_concurrency: 4            # Max child tasks running at once per delegate call
   max_steps: 30                 # Default per-child step limit
   allow_nested: false           # Allow write-capable children to delegate further
+
+providers:
+  llmlite:                      # Any provider ID; usable via provider:, PROVIDER, --provider, /provider
+    name: LLM Lite              # Optional display name (defaults to the ID)
+    baseURL: https://llmlite.example.com/v1   # Required; OpenAI-compatible endpoint
+    apiKeyEnvVar: LLMLITE_API_KEY             # Env var holding the key (recommended)
+    # apiKey: literal-key                    # Optional literal key (apiKeyEnvVar preferred)
+    defaultModel: auto           # Required; used when no model is selected
+    fallbackModels: [model-a]    # Optional capacity failover models
+    models:                      # Optional model discovery (default: openai-compatible)
+      type: openai-compatible    # GET {baseURL}/models
+      # type: endpoint           # Custom HTTP endpoint returning a model list
+      #   url: /api/models      #   Absolute URL or baseURL-relative path
+      #   itemsPath: data.items #   Dotted path to the array in the JSON response
+      #   idField: model        #   Field used as the model id (default: id)
+      #   nameField: label      #   Field used as the display name (default: name)
+      # type: static            # No network; return a fixed list
+      #   list: [auto, { id: pro, name: Pro Model }]
 ```
+
+### Custom Providers
+
+The `providers` map lets you register any OpenAI-compatible router or gateway (e.g. `llmlite`) under a name of your choice. Custom providers work everywhere a built-in provider ID does: `provider:` in config, the `PROVIDER` env var, `--provider`, and the interactive `/provider` and `/model` commands.
+
+Each entry requires `baseURL` and `defaultModel`. API keys resolve in this order: explicit option → entry `apiKey` → the env var named by `apiKeyEnvVar` → `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` → `dummy`. Prefer `apiKeyEnvVar` over a literal `apiKey` so secrets stay out of config files.
+
+Model discovery (`models`) supports three methods:
+
+- `openai-compatible` (default): lists models from the OpenAI-compatible `GET {baseURL}/models` endpoint.
+- `endpoint`: fetches a custom URL (absolute or relative to `baseURL`) and maps the JSON response via `itemsPath`, `idField`, and `nameField`.
+- `static`: returns a fixed list with no network request.
+
+If discovery fails or returns nothing, the provider falls back to `defaultModel`. Provider IDs must be unique and cannot collide with built-ins (`router`, `openai`, `anthropic`, `google`, `zai`); invalid entries fail fast at startup with a descriptive error.
 
 ### Retry Policy
 
