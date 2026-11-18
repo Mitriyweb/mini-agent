@@ -2,9 +2,9 @@ import { describe, expect, it } from 'bun:test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { Logger, redactSecrets } from '../src/agent/logging.js';
-import { createEventHandler, parseArgs } from '../src/start.js';
 import { resolveAgentConfig } from '../src/agent/config.js';
+import { AuditLogger, Logger, redactSecrets } from '../src/agent/logging.js';
+import { createEventHandler, parseArgs } from '../src/start.js';
 import { isolateUserConfig } from './user-config-isolation.ts';
 
 isolateUserConfig();
@@ -189,6 +189,48 @@ describe('Logging Subsystem Test Suite', () => {
 
       const contents = await fs.readFile(logFile, 'utf8');
       expect(contents).toContain('file log message');
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('AuditLogger writes to .mini-agent/audit.jsonl by default', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mini-agent-audit-test-'));
+
+    try {
+      const audit = new AuditLogger(tempDir);
+      audit.logEvent('run-1', 'tool_call', { name: 'read' });
+
+      const contents = await fs.readFile(path.join(tempDir, '.mini-agent', 'audit.jsonl'), 'utf8');
+      expect(contents).toContain('"event":"tool_call"');
+      expect(contents).toContain('"runId":"run-1"');
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('AuditLogger with enabled: false creates no files and writes nothing', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mini-agent-audit-test-'));
+
+    try {
+      const audit = new AuditLogger(tempDir, { enabled: false });
+      audit.logEvent('run-1', 'tool_call', { name: 'read' });
+
+      expect(await fs.access(path.join(tempDir, '.mini-agent')).then(() => true).catch(() => false)).toBe(false);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('AuditLogger honors a custom filePath relative to the workspace', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mini-agent-audit-test-'));
+
+    try {
+      const audit = new AuditLogger(tempDir, { filePath: 'logs/audit.jsonl' });
+      audit.logEvent('run-1', 'run_start', {});
+
+      const contents = await fs.readFile(path.join(tempDir, 'logs', 'audit.jsonl'), 'utf8');
+      expect(contents).toContain('"event":"run_start"');
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }

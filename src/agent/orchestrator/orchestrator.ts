@@ -34,6 +34,7 @@ export interface OrchestratorOptions {
   workflows?: AgentOptions['workflows'];
   skills?: AgentOptions['skills'];
   logging?: AgentOptions['logging'];
+  audit?: AgentOptions['audit'];
   costTracking?: AgentOptions['costTracking'];
   skillsConfig?: AgentOptions['skillsConfig'];
   systemPromptConfig?: AgentOptions['systemPromptConfig'];
@@ -176,7 +177,7 @@ export class OpenSpecOrchestrator {
           if (fs.existsSync(taskRunRecordFile)) {
             const recordedRunId = fs.readFileSync(taskRunRecordFile, 'utf8').trim();
             try {
-              const candidate = DurableRun.load(workspace.root, recordedRunId);
+              const candidate = DurableRun.load(workspace.root, recordedRunId, this.options.audit);
               if (candidate.state.status === 'interrupted' || candidate.state.status === 'running') {
                 candidate.resume();
                 durableRun = candidate;
@@ -191,6 +192,7 @@ export class OpenSpecOrchestrator {
             durableRun = DurableRun.create(
               workspace.root,
               `[OpenSpec ${changeName}] [${nextTask.id}] ${nextTask.description}`,
+              this.options.audit,
             );
             fs.mkdirSync(path.dirname(taskRunRecordFile), { recursive: true });
             fs.writeFileSync(taskRunRecordFile, durableRun.state.id, 'utf8');
@@ -212,6 +214,7 @@ export class OpenSpecOrchestrator {
             workflows: this.options.workflows,
             skills: this.options.skills,
             logging: this.options.logging,
+            audit: this.options.audit,
             costTracking: this.options.costTracking,
             skillsConfig: this.options.skillsConfig,
             systemPromptConfig: this.options.systemPromptConfig,

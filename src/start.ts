@@ -15,7 +15,7 @@ import { registerCustomProviders } from './agent/providers/custom.ts';
 import { Workspace } from './agent/workspace.ts';
 import { AgentResultStatus, SubagentPhase, type AgentEvent } from './types/agent.ts';
 import { PermissionMode } from './types/permissions.ts';
-import { resolveAgentConfig, type PartialAgentConfig } from './agent/config.ts';
+import { resolveAgentConfig, type ConfigIssue, type PartialAgentConfig } from './agent/config.ts';
 import { runConfigWizard, type ConfigWizardFormat, type ConfigWizardScope } from './agent/config-wizard.ts';
 import { validateProfileName } from './agent/profiles.ts';
 import { Logger, type LogLevel } from './agent/logging.ts';
@@ -731,7 +731,12 @@ export const main = async () => {
     profile: options.profile,
   };
 
-  const resolvedConfig = resolveAgentConfig(cliOverrides, options.workspaceDir);
+  const configIssues: ConfigIssue[] = [];
+  const resolvedConfig = resolveAgentConfig(cliOverrides, options.workspaceDir, configIssues);
+  for (const issue of configIssues) {
+    console.error(color.warn(`Config warning: ${issue.message}`));
+    console.error(color.dim(`  Fix: ${issue.fixCommand}`));
+  }
   const logger = new Logger({ level: resolvedConfig.logging.level, filePath: resolvedConfig.logging.filePath });
 
   const workspace = await Workspace.open(options.workspaceDir);
@@ -776,6 +781,10 @@ export const main = async () => {
     if (options.profile) console.log(`Profile     : ${options.profile}`);
     if (workflows.length > 0) console.log(`Workflows   : ${workflows.map((w) => w.command).join(', ')}`);
     console.log('--------------------------------------------------\n');
+  } else {
+    // `off` suppresses the full banner but keeps a compact identity line so
+    // the run does not look like it failed to start.
+    console.log(color.dim(`mini-agent v${VERSION} · ${workspace.root} · logging off`));
   }
 
   const onEvent = createEventHandler(logger);
@@ -818,6 +827,7 @@ export const main = async () => {
         workflows,
         skills: filteredSkills,
         logging: resolvedConfig.logging,
+        audit: resolvedConfig.audit,
         costTracking: resolvedConfig.costTracking,
         skillsConfig: resolvedConfig.skills,
         systemPromptConfig: resolvedConfig.systemPrompt,
@@ -858,7 +868,7 @@ export const main = async () => {
     }
 
     try {
-      const run = DurableRun.load(workspace.root, options.runId);
+      const run = DurableRun.load(workspace.root, options.runId, resolvedConfig.audit);
       const review = run.state.review;
       if (!review) {
         console.error(color.error(`Run '${options.runId}' has no external review result.`));
@@ -926,10 +936,10 @@ export const main = async () => {
     try {
       if (options.command === ParsedCommand.Run) {
         if (!options.task) throw new Error('Usage: mini-agent run "task"');
-        durableRun = DurableRun.create(workspace.root, options.task);
+        durableRun = DurableRun.create(workspace.root, options.task, resolvedConfig.audit);
         console.log(color.cyan(`Run ID: ${durableRun.state.id}`));
       } else if (options.command === ParsedCommand.Resume) {
-        durableRun = DurableRun.load(workspace.root, options.runId!);
+        durableRun = DurableRun.load(workspace.root, options.runId!, resolvedConfig.audit);
         durableRun.resume();
         console.log(color.cyan(`Resuming run: ${durableRun.state.id}`));
       }
@@ -962,6 +972,7 @@ export const main = async () => {
         workflows,
         skills: allSkills,
         logging: resolvedConfig.logging,
+        audit: resolvedConfig.audit,
         costTracking: resolvedConfig.costTracking,
         skillsConfig: resolvedConfig.skills,
         systemPromptConfig: resolvedConfig.systemPrompt,
@@ -1318,6 +1329,7 @@ export const main = async () => {
           workflows,
           skills: allSkills,
           logging: resolvedConfig.logging,
+        audit: resolvedConfig.audit,
           costTracking: resolvedConfig.costTracking,
           skillsConfig: resolvedConfig.skills,
           systemPromptConfig: resolvedConfig.systemPrompt,

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { load as parseYaml } from 'js-yaml';
-import type { LogLevel, LoggingConfig } from './logging.ts';
+import type { AuditConfig, LogLevel, LoggingConfig } from './logging.ts';
 import type { CostTrackingConfig, ModelPricing } from './usage-tracker.ts';
 import type { SkillsConfig } from './skills.ts';
 import type { SystemPromptConfig } from './system-prompt.ts';
@@ -69,6 +69,15 @@ export const validateRetryConfig = (config: Partial<RetryConfig>): void => {
   }
 };
 
+export const validateAuditConfig = (config: Partial<AuditConfig>): void => {
+  if (config.enabled !== undefined && typeof config.enabled !== 'boolean') {
+    throw new Error(`audit.enabled must be a boolean (true/false), got: ${typeof config.enabled} (${config.enabled})`);
+  }
+  if (config.filePath !== undefined && typeof config.filePath !== 'string') {
+    throw new Error(`audit.filePath must be a string, got: ${typeof config.filePath}`);
+  }
+};
+
 export const validateReviewConfig = (config: Partial<ReviewConfig>): void => {
   if (config.enabled === true && !config.authorizedProvider) {
     throw new Error('review.authorizedProvider must be configured when review is enabled');
@@ -117,6 +126,10 @@ export const getConfig = (): Config => {
 export interface FileConfigSchema {
   logging?: {
     level?: LogLevel;
+    filePath?: string;
+  };
+  audit?: {
+    enabled?: boolean;
     filePath?: string;
   };
   cost_tracking?: {
@@ -191,6 +204,7 @@ export interface FileConfigSchema {
 
 export interface PartialAgentConfig {
   logging?: Partial<LoggingConfig>;
+  audit?: Partial<AuditConfig>;
   costTracking?: Partial<CostTrackingConfig>;
   skills?: Partial<SkillsConfig>;
   systemPrompt?: Partial<SystemPromptConfig>;
@@ -211,6 +225,7 @@ export interface PartialAgentConfig {
 
 export interface AgentResolvedConfig {
   logging: LoggingConfig;
+  audit: AuditConfig;
   costTracking: CostTrackingConfig;
   skills: SkillsConfig;
   systemPrompt: SystemPromptConfig;
@@ -235,6 +250,23 @@ export const CONFIG_FILE_NAMES = [
   '.mini-agentrc.yml',
   '.mini-agentrc.json',
 ];
+
+export type ConfigIssueKind = 'parse-error' | 'unrecognized-name';
+
+export interface ConfigIssue {
+  kind: ConfigIssueKind;
+  /** File that triggered the warning. */
+  path: string;
+  /** Human-readable explanation, safe to print as-is. */
+  message: string;
+  /** Copy-pasteable command that fixes the problem. */
+  fixCommand: string;
+}
+
+const configFixCommand = (layer: 'user' | 'workspace'): string => `mini-agent config --${layer} --force`;
+
+const looksLikeConfigFile = (name: string): boolean =>
+  /\.(ya?ml|json)$/i.test(name) && name !== 'package.json' && name !== 'tsconfig.json';
 
 /**
  * Directory that holds the user-level config file.
@@ -270,26 +302,69 @@ export const deepMergeFileConfigs = (
   return mergeValues(base, override) as FileConfigSchema;
 };
 
-export const loadConfigFile = (workspaceRoot?: string, explicitPath?: string): FileConfigSchema => {
+export const loadConfigFile = (
+  workspaceRoot?: string,
+  explicitPath?: string,
+  issues?: ConfigIssue[],
+): FileConfigSchema => {
   const root = workspaceRoot ? path.resolve(workspaceRoot) : process.cwd();
+  const isUserLayer = !explicitPath && root === path.resolve(resolveUserConfigDir());
+  const fixCommand = configFixCommand(isUserLayer ? 'user' : 'workspace');
 
   const candidates = explicitPath
     ? [path.resolve(root, explicitPath)]
     : CONFIG_FILE_NAMES.map((name) => path.join(root, name));
 
+  let loaded = false;
   for (const candidate of candidates) {
-    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
-      try {
-        const raw = fs.readFileSync(candidate, 'utf8');
-        if (candidate.endsWith('.json')) {
-          return JSON.parse(raw) as FileConfigSchema;
-        }
-        return (parseYaml(raw) as FileConfigSchema) || {};
-      } catch (err) {
-        if (explicitPath) {
-          throw new Error(`Failed to parse configuration file at '${candidate}': ${err}`);
-        }
+    if (!fs.existsSync(candidate) || !fs.statSync(candidate).isFile()) continue;
+    try {
+      const raw = fs.readFileSync(candidate, 'utf8');
+      const parsed = candidate.endsWith('.json')
+        ? (JSON.parse(raw) as FileConfigSchema)
+        : ((parseYaml(raw) as FileConfigSchema) || {});
+      loaded = true;
+      return parsed;
+    } catch (err) {
+      if (explicitPath) {
+        throw new Error(`Failed to parse configuration file at '${candidate}': ${err}`);
       }
+      issues?.push({
+        kind: 'parse-error',
+        path: candidate,
+        message: `Ignoring '${candidate}': failed to parse (${err instanceof Error ? err.message : String(err)}). Settings in this file are not applied.`,
+        fixCommand,
+      });
+    }
+  }
+
+  // A user-level config with a slightly different file name is a common
+  // footgun (the file exists but is never read). Point at the exact rename.
+  if (isUserLayer && !loaded) {
+    try {
+      const stray = fs.readdirSync(root)
+        .filter((name) => !CONFIG_FILE_NAMES.includes(name) && looksLikeConfigFile(name))
+        .map((name) => path.join(root, name))
+        .filter((file) => {
+          try {
+            return fs.statSync(file).isFile();
+          } catch {
+            return false;
+          }
+        });
+      const target = path.join(root, 'mini-agent.config.yaml');
+      for (const file of stray) {
+        issues?.push({
+          kind: 'unrecognized-name',
+          path: file,
+          message: `Found '${file}' but mini-agent reads only ${CONFIG_FILE_NAMES.join(', ')} in this directory. This file is not applied.`,
+          fixCommand: stray.length === 1
+            ? `mv "${file}" "${target}"`
+            : `${fixCommand} (or rename '${path.basename(file)}' to 'mini-agent.config.yaml')`,
+        });
+      }
+    } catch {
+      // Missing/unreadable user config directory: nothing to diagnose.
     }
   }
 
@@ -299,12 +374,13 @@ export const loadConfigFile = (workspaceRoot?: string, explicitPath?: string): F
 export const resolveAgentConfig = (
   cliOverrides: PartialAgentConfig = {},
   workspaceRoot?: string,
+  issues?: ConfigIssue[],
 ): AgentResolvedConfig => {
   // Layered file config: the user-level file provides application-wide
   // defaults and the workspace file (or an explicit --config target) wins
   // per key. Profile/env/CLI layers still override both.
-  const userFileConfig = loadConfigFile(resolveUserConfigDir());
-  const workspaceFileConfig = loadConfigFile(workspaceRoot, cliOverrides.configPath);
+  const userFileConfig = loadConfigFile(resolveUserConfigDir(), undefined, issues);
+  const workspaceFileConfig = loadConfigFile(workspaceRoot, cliOverrides.configPath, issues);
   const fileConfig = deepMergeFileConfigs(userFileConfig, workspaceFileConfig);
 
   // Resolve profile overrides (defaults < user file < workspace file <
@@ -315,12 +391,16 @@ export const resolveAgentConfig = (
 
   // Defaults
   const defaultLogging: LoggingConfig = { level: 'normal', filePath: path.join(process.cwd(), 'mini-agent.log') };
+  const defaultAudit: AuditConfig = { enabled: true };
   const defaultCostTracking: CostTrackingConfig = { enabled: false, currency: 'USD', models: {} };
   const defaultSkills: SkillsConfig = { enabled: true, allow: [], deny: [] };
   const defaultSystemPrompt: SystemPromptConfig = { enabled: true };
 
   // File values
   const fileLogging = fileConfig.logging;
+  const fileAudit = fileConfig.audit;
+  validateAuditConfig(fileAudit ?? {});
+  validateAuditConfig(cliOverrides.audit ?? {});
   const envLogFile = (process.env.MINI_AGENT_LOG_FILE || process.env.LOG_FILE) as string | undefined;
   const fileCost = fileConfig.cost_tracking ?? fileConfig.costTracking;
   const fileSkills = fileConfig.skills;
@@ -353,6 +433,24 @@ export const resolveAgentConfig = (
     (profileOverrides as PartialAgentConfig).logging?.filePath ??
     fileLogging?.filePath ??
     (level === 'off' ? undefined : defaultLogging.filePath);
+
+  // Merge Audit (Defaults < Config File < Env < CLI). The audit trail is
+  // independent of `logging.level`; disable it explicitly with audit.enabled.
+  const envAuditEnabled = process.env.MINI_AGENT_AUDIT_ENABLED !== undefined
+    ? process.env.MINI_AGENT_AUDIT_ENABLED === 'true'
+    : undefined;
+  const envAuditFile = process.env.MINI_AGENT_AUDIT_FILE;
+
+  const auditEnabled: boolean =
+    cliOverrides.audit?.enabled ??
+    envAuditEnabled ??
+    fileAudit?.enabled ??
+    defaultAudit.enabled;
+
+  const auditFilePath: string | undefined =
+    cliOverrides.audit?.filePath ??
+    envAuditFile ??
+    fileAudit?.filePath;
 
   // Merge Cost Tracking
   const costEnabled: boolean =
@@ -558,6 +656,7 @@ export const resolveAgentConfig = (
 
   return {
     logging: { level, filePath },
+    audit: { enabled: auditEnabled, filePath: auditFilePath },
     costTracking: {
       enabled: costEnabled,
       currency: costCurrency,

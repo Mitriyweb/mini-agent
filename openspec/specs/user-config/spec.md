@@ -42,6 +42,26 @@ User-level and workspace-level config files SHALL merge section-by-section, with
 - **WHEN** configuration is resolved
 - **THEN** both `currency: EUR` and `enabled: true` are effective
 
+### Requirement: Config Problems Are Surfaced
+The system SHALL report config files that exist but cannot be applied, and SHALL print a concrete command that fixes each problem.
+
+#### Scenario: Malformed user config
+- **GIVEN** `~/.config/mini-agent/mini-agent.config.yaml` exists but is not valid YAML/JSON
+- **WHEN** `mini-agent` resolves its configuration
+- **THEN** it prints a warning naming the file and the parse error
+- **AND** `mini-agent config --user --force` is offered as the fix command
+- **AND** the run continues with defaults and the workspace config
+
+#### Scenario: Misnamed user config
+- **GIVEN** `~/.config/mini-agent/config.yaml` exists but no supported config file name matches
+- **WHEN** `mini-agent` resolves its configuration
+- **THEN** it warns that the file is not applied and shows a `mv` command to the supported name
+
+#### Scenario: Malformed workspace config
+- **GIVEN** the workspace config exists but is not valid YAML/JSON
+- **WHEN** `mini-agent` resolves its configuration
+- **THEN** it prints a warning and offers `mini-agent config --workspace --force` as the fix command
+
 ### Requirement: Wizard Scope Selection
 The config wizard SHALL let the user choose whether to write the user-level config or the workspace config, defaulting to the user-level scope, and SHALL honor explicit scope flags without prompting.
 

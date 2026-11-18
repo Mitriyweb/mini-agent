@@ -221,7 +221,10 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
   logger.logVerbose('Effective System Instructions:', effectiveInstructions);
 
   const runId = durableRun?.state.id ?? randomUUID();
-  const auditLogger = new AuditLogger(workspace.root);
+  const auditLogger = new AuditLogger(workspace.root, {
+    enabled: options.audit?.enabled,
+    filePath: options.audit?.filePath,
+  });
   let reviewBaseline: { type: BaselineType; ref?: string; timestamp: string } | undefined;
   if (options.review?.enabled && options.review.authorizedProvider) {
     reviewBaseline = new ReviewOrchestrator(workspace, options.review).captureBaseline();
@@ -297,6 +300,7 @@ export const runAgent = async (options: AgentOptions): Promise<AgentResult> => {
           forceReadOnlyTools: childReadOnly,
           customProviders: options.customProviders,
           permissionMode: options.permissionMode,
+          audit: options.audit,
         });
         return { status: 'completed', text: childResult.text, usageSummary: childResult.usageSummary };
       } catch (error) {

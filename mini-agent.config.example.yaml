@@ -12,6 +12,10 @@
 logging:
   level: normal # off | normal | verbose
 
+audit:
+  enabled: true # tool calls and run lifecycle events; not affected by logging.level
+  # filePath: .mini-agent/audit.jsonl # optional override, relative to the workspace
+
 cost_tracking:
   enabled: false
   currency: USD

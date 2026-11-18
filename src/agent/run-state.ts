@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
-import { redactSecrets, AuditLogger } from './logging.ts';
+import { redactSecrets, AuditLogger, type AuditConfig } from './logging.ts';
 import type { UsageSummary } from './usage-tracker.ts';
 import type { QualityGateResult } from './quality-gates.ts';
 import type { ReviewResult } from './review-types.ts';
@@ -46,13 +46,22 @@ const safe = <T>(value: T): T => redactSecrets(value) as T;
 export class DurableRun {
   public readonly directory: string;
   public state: RunState;
+  private readonly audit?: Partial<AuditConfig>;
 
-  private constructor(directory: string, state: RunState) {
+  private constructor(directory: string, state: RunState, audit?: Partial<AuditConfig>) {
     this.directory = directory;
     this.state = state;
+    this.audit = audit;
   }
 
-  public static create(workspace: string, task: string): DurableRun {
+  private auditLogger(): AuditLogger {
+    return new AuditLogger(this.state.workspace, {
+      enabled: this.audit?.enabled,
+      filePath: this.audit?.filePath,
+    });
+  }
+
+  public static create(workspace: string, task: string, audit?: Partial<AuditConfig>): DurableRun {
     const id = randomUUID();
     const directory = path.join(workspace, '.mini-agent', 'runs', id);
     const now = new Date().toISOString();
@@ -70,14 +79,14 @@ export class DurableRun {
       completedToolCalls: [],
     };
     fs.mkdirSync(directory, { recursive: true });
-    const run = new DurableRun(directory, state);
-    new AuditLogger(workspace).logEvent(id, 'run_start', { task });
+    const run = new DurableRun(directory, state, audit);
+    run.auditLogger().logEvent(id, 'run_start', { task });
     run.writeState();
     run.appendEvent('created', { task: state.task, workspace: state.workspace });
     return run;
   }
 
-  public static load(workspace: string, runId: string): DurableRun {
+  public static load(workspace: string, runId: string, audit?: Partial<AuditConfig>): DurableRun {
     if (!/^[a-zA-Z0-9-]+$/.test(runId)) throw new Error('Invalid run ID.');
     const directory = path.join(workspace, '.mini-agent', 'runs', runId);
     const statePath = path.join(directory, stateFileName);
@@ -90,7 +99,7 @@ export class DurableRun {
     if (!DurableRun.isValidState(parsed, runId, workspace)) {
       throw new Error(`Unable to resume run '${runId}': state.json is invalid or belongs to another workspace.`);
     }
-    const run = new DurableRun(directory, parsed);
+    const run = new DurableRun(directory, parsed, audit);
     if (run.state.status === 'completed') {
       throw new Error(`Run '${runId}' is already completed and cannot be resumed.`);
     }
@@ -111,7 +120,7 @@ export class DurableRun {
   public resume(): void {
     this.state.status = RunStatus.RUNNING;
     delete this.state.error;
-    new AuditLogger(this.state.workspace).logEvent(this.state.id, 'run_resume', { task: this.state.task });
+    this.auditLogger().logEvent(this.state.id, 'run_resume', { task: this.state.task });
     this.persist('resumed');
   }
 
@@ -145,7 +154,7 @@ export class DurableRun {
     this.state.qualityGateResults = safe(metadata.qualityGateResults);
     this.state.usageSummary = safe(metadata.usageSummary);
     this.state.review = safe(metadata.reviewResult);
-    new AuditLogger(this.state.workspace).logEvent(this.state.id, 'run_complete', metadata);
+    this.auditLogger().logEvent(this.state.id, 'run_complete', metadata);
     this.persist('completed');
   }
 
@@ -164,14 +173,14 @@ export class DurableRun {
     this.state.qualityGateResults = safe(metadata.qualityGateResults);
     this.state.usageSummary = safe(metadata.usageSummary);
     this.state.review = safe(metadata.reviewResult);
-    new AuditLogger(this.state.workspace).logEvent(this.state.id, 'run_fail', { error: this.state.error, ...metadata });
+    this.auditLogger().logEvent(this.state.id, 'run_fail', { error: this.state.error, ...metadata });
     this.persist('failed', { error: this.state.error });
   }
 
   public interrupt(): void {
     if (this.state.status !== RunStatus.RUNNING) return;
     this.state.status = RunStatus.INTERRUPTED;
-    new AuditLogger(this.state.workspace).logEvent(this.state.id, 'run_interrupt', {});
+    this.auditLogger().logEvent(this.state.id, 'run_interrupt', {});
     this.persist('interrupted');
   }
 

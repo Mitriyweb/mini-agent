@@ -3,7 +3,7 @@ import type { Permissions, PermissionMode } from './permissions.ts';
 import type { Provider, CustomProviderConfig } from './llm.ts';
 import type { Workspace } from '../agent/workspace.ts';
 import type { Workflow, Skill } from '../agent/customizations.ts';
-import type { LogLevel, LoggingConfig, Logger } from '../agent/logging.ts';
+import type { LogLevel, LoggingConfig, Logger, AuditConfig } from '../agent/logging.ts';
 import type { CostTrackingConfig, UsageTracker, UsageSummary } from '../agent/usage-tracker.ts';
 import type { SkillsConfig } from '../agent/skills.ts';
 import type { SystemPromptConfig } from '../agent/system-prompt.ts';
@@ -102,6 +102,8 @@ export interface AgentOptions {
 
   // Configurable options
   logging?: LoggingConfig | LogLevel;
+  /** Audit trail settings. Independent of `logging.level`; defaults to enabled. */
+  audit?: AuditConfig;
   costTracking?: CostTrackingConfig | boolean;
   skillsConfig?: SkillsConfig;
   systemPromptConfig?: SystemPromptConfig;

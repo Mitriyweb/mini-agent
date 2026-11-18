@@ -35,6 +35,11 @@ The wizard SHALL cover every option documented in `mini-agent.config.example.yam
 - **WHEN** the user reaches the logging section or uses defaults mode
 - **THEN** the pre-selected/generated logging level is `off`
 
+#### Scenario: Audit defaults to enabled
+- **GIVEN** no config file exists or no audit setting is set
+- **WHEN** the user reaches the audit section or uses defaults mode
+- **THEN** `audit.enabled` is pre-selected/generated as `true`
+
 ### Requirement: Inline Validation
 The wizard SHALL validate each answer against the same rules the config loader enforces and SHALL reject invalid input with a corrective message before moving on.
 

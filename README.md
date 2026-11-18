@@ -13,10 +13,11 @@ A lightweight, modular coding agent harness supporting multi-provider LLMs (**Mo
   - **Gzip Transport**: JSON request bodies are gzip-encoded (`Content-Encoding: gzip`) and `Accept-Encoding: gzip` is advertised on every provider call; gzip-encoded responses are transparently decompressed.
 - **TypeScript & ESM**: Fully typed codebase targeting Node.js >= 20 and Bun.
 - **Configurable Observability & Logging**:
-  - `off`: Suppresses the startup banner, step/tool event logs, and the log file sink, while assistant responses and final task output still print.
+  - `off`: Suppresses the startup banner (a compact one-line identity is still printed), step/tool event logs, and the log file sink, while assistant responses and final task output still print.
   - `normal`: Standard workflow execution feedback.
   - `verbose`: Detailed debugging including prompt metadata, request duration, token usage, and skill resolution, with safe secret redaction.
   - Errors are always echoed to the console (`stderr`) even when file logging is enabled, so failures are never silent.
+  - The `.mini-agent/audit.jsonl` trail records tool calls and run lifecycle events independently of `logging.level`; disable it explicitly with `audit.enabled: false`.
 - **Independent Token & Cost Accounting**:
   - Collects token usage (input/prompt, output/completion, total).
   - Configurable pricing per 1 million tokens (global default or per-model).
@@ -169,7 +170,7 @@ Values merge section-by-section and key-by-key, with workspace values winning on
 
 ### Configuration Wizard
 
-Run `mini-agent config` for an interactive wizard that first asks whether to target the user-level config (default) or the workspace config, then walks every configurable section (logging, cost tracking, skills, system prompt, provider/model, permission mode, retry, external review, subagents, quality gates, and custom providers). Each answer is validated with the same rules the config loader uses, and the result is written ready to use — picked up automatically on the next run.
+Run `mini-agent config` for an interactive wizard that first asks whether to target the user-level config (default) or the workspace config, then walks every configurable section (logging, audit, cost tracking, skills, system prompt, provider/model, permission mode, retry, external review, subagents, quality gates, and custom providers). Each answer is validated with the same rules the config loader uses, and the result is written ready to use — picked up automatically on the next run.
 
 ```bash
 mini-agent config                  # interactive wizard → user-level config (~/.config/mini-agent)
@@ -182,6 +183,8 @@ mini-agent config --config custom.yaml --format json   # custom target/format
 ```
 
 Empty input keeps the current value (existing config pre-fills the prompts); invalid input is rejected and re-asked. `--defaults` and `--dry-run` report the resolved target path. `--defaults` works without a TTY; the interactive wizard requires one. See `mini-agent.config.example.yaml` for the full annotated option reference.
+
+If a config file exists but is malformed or misnamed, startup prints a warning naming the file and a copy-pasteable fix (for example `mini-agent config --user --force` or a `mv` to the supported file name) while continuing with the remaining layers.
 
 ### Configuration Precedence Order
 Rules are evaluated in strict priority order (CLI arguments always take highest precedence):
@@ -205,6 +208,10 @@ Profiles (e.g., `--profile developer`) apply role-based defaults on top of file 
 ```yaml
 logging:
   level: normal # off | normal | verbose
+
+audit:
+  enabled: true # audit trail under .mini-agent/ (independent of logging.level)
+  # filePath: .mini-agent/audit.jsonl # optional override, relative to the workspace
 
 cost_tracking:
   enabled: true
@@ -372,6 +379,8 @@ CLI reviewer details:
 | Variable | Default | Description |
 |---|---|---|
 | `LOG_LEVEL` / `MINI_AGENT_LOG_LEVEL` | `normal` | Logging verbosity (`off`, `normal`, `verbose`) |
+| `MINI_AGENT_AUDIT_ENABLED` | `true` | Enable/disable the `.mini-agent/audit.jsonl` trail (`true`/`false`) |
+| `MINI_AGENT_AUDIT_FILE` | — | Override the audit file path (relative to the workspace) |
 | `MINI_AGENT_COST_TRACKING` | `false` | Enable/disable cost tracking (`true`/`false`) |
 | `MINI_AGENT_SKILLS_ENABLED` | `true` | Enable/disable skills discovery (`true`/`false`) |
 | `MINI_AGENT_SYSTEM_PROMPT_ENABLED` | `true` | Enable/disable standard system prompt (`true`/`false`) |

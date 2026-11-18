@@ -9,6 +9,16 @@ export interface LoggingConfig {
   filePath?: string;
 }
 
+/**
+ * Audit trail configuration. The audit log is a separate sink from
+ * `logging.level`: it records tool calls and run lifecycle events regardless
+ * of console verbosity, and is disabled only via `audit.enabled: false`.
+ */
+export interface AuditConfig {
+  enabled: boolean;
+  filePath?: string;
+}
+
 const color = (concolor as any)({
   info: 'b,blue',
   warn: 'b,yellow',
@@ -144,20 +154,34 @@ export interface AuditEvent {
   [key: string]: unknown;
 }
 
+export interface AuditLoggerOptions {
+  /** Set to false to skip creating and writing the audit trail. Defaults to true. */
+  enabled?: boolean;
+  /** Override the default `<workspace>/.mini-agent/audit.jsonl` location. */
+  filePath?: string;
+}
+
 export class AuditLogger {
   private filePath?: string;
 
-  constructor(workspacePath?: string) {
-    if (workspacePath) {
+  constructor(workspacePath?: string, options: AuditLoggerOptions = {}) {
+    if (options.enabled === false) return;
+
+    if (options.filePath) {
+      this.filePath = path.resolve(workspacePath ?? process.cwd(), options.filePath);
+    } else if (workspacePath) {
       this.filePath = path.join(workspacePath, '.mini-agent', 'audit.jsonl');
-      try {
-        const dirPath = path.dirname(this.filePath);
-        fs.mkdirSync(dirPath, { recursive: true });
-        fs.closeSync(fs.openSync(this.filePath, 'a'));
-      } catch (err) {
-        // Best-effort: ignore if we cannot create the audit file
-        this.filePath = undefined;
-      }
+    } else {
+      return;
+    }
+
+    try {
+      const dirPath = path.dirname(this.filePath);
+      fs.mkdirSync(dirPath, { recursive: true });
+      fs.closeSync(fs.openSync(this.filePath, 'a'));
+    } catch (err) {
+      // Best-effort: ignore if we cannot create the audit file
+      this.filePath = undefined;
     }
   }
 

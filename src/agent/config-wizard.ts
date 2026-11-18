@@ -135,6 +135,7 @@ const stripUndefined = (value: unknown): unknown => {
  */
 export const WIZARD_DEFAULT_FILE_CONFIG: FileConfigSchema = {
   logging: { level: 'off' },
+  audit: { enabled: true },
   cost_tracking: { enabled: false, currency: 'USD' },
   skills: { enabled: true, allow: [], deny: [] },
   system_prompt: { enabled: true },
@@ -158,6 +159,7 @@ export const WIZARD_DEFAULT_FILE_CONFIG: FileConfigSchema = {
 
 const TOP_LEVEL_ORDER = [
   'logging',
+  'audit',
   'cost_tracking',
   'skills',
   'system_prompt',
@@ -176,6 +178,7 @@ const TOP_LEVEL_ORDER = [
 
 const SECTION_COMMENTS: Record<string, string> = {
   logging: 'Log output level and optional file sink',
+  audit: 'Audit trail under .mini-agent (independent of logging.level)',
   cost_tracking: 'LLM token usage and cost tracking',
   skills: 'Skill loading allow/deny lists',
   system_prompt: 'Built-in system prompt toggle and custom path',
@@ -195,6 +198,8 @@ const SECTION_COMMENTS: Record<string, string> = {
 const FIELD_COMMENTS: Record<string, string> = {
   'logging.level': 'off | normal | verbose',
   'logging.filePath': 'optional log file path (default: ./mini-agent.log)',
+  'audit.enabled': 'record tool calls and run lifecycle events (not affected by logging.level)',
+  'audit.filePath': 'optional audit file path (default: .mini-agent/audit.jsonl)',
   'cost_tracking.enabled': 'track token usage and cost per request',
   'cost_tracking.currency': 'currency code for cost estimates',
   'cost_tracking.pricing': 'default pricing per 1M tokens: {"input_per_1m_tokens":0,"output_per_1m_tokens":0}',
@@ -251,6 +256,9 @@ export const WIZARD_FIELDS: WizardField[] = [
   // logging
   { section: 'Logging', label: 'logging.level', path: ['logging', 'level'], kind: 'enum', choices: ['off', 'normal', 'verbose'] },
   { section: 'Logging', label: 'logging.filePath', path: ['logging', 'filePath'], kind: 'string', hint: 'empty keeps default (./mini-agent.log)' },
+  // audit
+  { section: 'Audit', label: 'audit.enabled', path: ['audit', 'enabled'], kind: 'bool' },
+  { section: 'Audit', label: 'audit.filePath', path: ['audit', 'filePath'], kind: 'string', hint: 'empty keeps default (.mini-agent/audit.jsonl)' },
   // cost_tracking
   { section: 'Cost Tracking', label: 'cost_tracking.enabled', path: ['cost_tracking', 'enabled'], kind: 'bool' },
   { section: 'Cost Tracking', label: 'cost_tracking.currency', path: ['cost_tracking', 'currency'], kind: 'string' },

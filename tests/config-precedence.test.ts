@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
-import { deepMergeFileConfigs, resolveAgentConfig, resolveUserConfigDir } from '../src/agent/config.js';
+import { deepMergeFileConfigs, resolveAgentConfig, resolveUserConfigDir, type ConfigIssue } from '../src/agent/config.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -16,6 +16,8 @@ describe('Configuration Precedence Test Suite (defaults < user file < workspace 
       XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
       LOG_LEVEL: process.env.LOG_LEVEL,
       MINI_AGENT_LOG_LEVEL: process.env.MINI_AGENT_LOG_LEVEL,
+      MINI_AGENT_AUDIT_ENABLED: process.env.MINI_AGENT_AUDIT_ENABLED,
+      MINI_AGENT_AUDIT_FILE: process.env.MINI_AGENT_AUDIT_FILE,
       MINI_AGENT_COST_TRACKING: process.env.MINI_AGENT_COST_TRACKING,
       MINI_AGENT_SKILLS_ENABLED: process.env.MINI_AGENT_SKILLS_ENABLED,
       MINI_AGENT_SYSTEM_PROMPT_ENABLED: process.env.MINI_AGENT_SYSTEM_PROMPT_ENABLED,
@@ -28,6 +30,8 @@ describe('Configuration Precedence Test Suite (defaults < user file < workspace 
     process.env.XDG_CONFIG_HOME = userConfigHome;
     delete process.env.LOG_LEVEL;
     delete process.env.MINI_AGENT_LOG_LEVEL;
+    delete process.env.MINI_AGENT_AUDIT_ENABLED;
+    delete process.env.MINI_AGENT_AUDIT_FILE;
     delete process.env.MINI_AGENT_COST_TRACKING;
     delete process.env.MINI_AGENT_SKILLS_ENABLED;
     delete process.env.MINI_AGENT_SYSTEM_PROMPT_ENABLED;
@@ -351,5 +355,81 @@ subagents:
     expect(resolveAgentConfig({}, tempDir).permissionMode).toBe('bypass');
     process.env.MINI_AGENT_PERMISSION_MODE = 'bogus';
     expect(() => resolveAgentConfig({}, tempDir)).toThrow(/permission_mode/);
+  });
+
+  it('audit is enabled by default and independent of logging.level', async () => {
+    await writeUserConfig('logging:\n  level: off\n');
+    const config = resolveAgentConfig({}, tempDir);
+    expect(config.logging.level).toBe('off');
+    expect(config.audit).toEqual({ enabled: true, filePath: undefined });
+  });
+
+  it('workspace audit settings override user config per key', async () => {
+    await writeUserConfig('audit:\n  enabled: true\n  filePath: user-audit.jsonl\n');
+    await fs.writeFile(
+      path.join(tempDir, 'mini-agent.config.yaml'),
+      'audit:\n  enabled: false\n',
+      'utf8',
+    );
+    const config = resolveAgentConfig({}, tempDir);
+    expect(config.audit).toEqual({ enabled: false, filePath: 'user-audit.jsonl' });
+  });
+
+  it('audit environment variables override file config', async () => {
+    await fs.writeFile(
+      path.join(tempDir, 'mini-agent.config.yaml'),
+      'audit:\n  enabled: true\n  filePath: file-audit.jsonl\n',
+      'utf8',
+    );
+    process.env.MINI_AGENT_AUDIT_ENABLED = 'false';
+    process.env.MINI_AGENT_AUDIT_FILE = 'env-audit.jsonl';
+    const config = resolveAgentConfig({}, tempDir);
+    expect(config.audit).toEqual({ enabled: false, filePath: 'env-audit.jsonl' });
+  });
+
+  it('reports a malformed user config with a fix command', async () => {
+    const file = await writeUserConfig('logging: [unterminated\n');
+    const issues: ConfigIssue[] = [];
+    const config = resolveAgentConfig({}, tempDir, issues);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe('parse-error');
+    expect(issues[0].path).toBe(file);
+    expect(issues[0].fixCommand).toBe('mini-agent config --user --force');
+    // Resolution still succeeds using defaults/workspace values.
+    expect(config.logging.level).toBe('normal');
+  });
+
+  it('reports a misnamed user config and suggests the rename', async () => {
+    const dir = path.join(userConfigHome, 'mini-agent');
+    await fs.mkdir(dir, { recursive: true });
+    const stray = path.join(dir, 'config.yaml');
+    await fs.writeFile(stray, 'logging:\n  level: off\n', 'utf8');
+
+    const issues: ConfigIssue[] = [];
+    resolveAgentConfig({}, tempDir, issues);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe('unrecognized-name');
+    expect(issues[0].path).toBe(stray);
+    expect(issues[0].fixCommand).toBe(`mv "${stray}" "${path.join(dir, 'mini-agent.config.yaml')}"`);
+  });
+
+  it('reports a malformed workspace config with a workspace fix command', async () => {
+    const file = path.join(tempDir, 'mini-agent.config.yaml');
+    await fs.writeFile(file, 'permission_mode: [oops\n', 'utf8');
+
+    const issues: ConfigIssue[] = [];
+    resolveAgentConfig({}, tempDir, issues);
+
+    expect(issues.map((issue) => issue.kind)).toEqual(['parse-error']);
+    expect(issues[0].fixCommand).toBe('mini-agent config --workspace --force');
+  });
+
+  it('emits no issues for a valid user config', async () => {
+    await writeUserConfig('logging:\n  level: off\n');
+    const issues: ConfigIssue[] = [];
+    resolveAgentConfig({}, tempDir, issues);
+    expect(issues).toEqual([]);
   });
 });
