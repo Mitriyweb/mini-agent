@@ -9,6 +9,9 @@ import {
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { isolateUserConfig } from './user-config-isolation.ts';
+
+isolateUserConfig();
 
 // ---------------------------------------------------------------------------
 // Profile unit tests

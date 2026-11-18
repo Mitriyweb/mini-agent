@@ -42,7 +42,7 @@ Context Update & Next Iteration
 ```
 
 ### 2. Core Modules
-- **`src/start.ts`**: CLI arguments parser (`parseArgs`), interactive terminal REPL, event logging (`createEventHandler`), graceful cleanup.
+- **`src/start.ts`**: CLI arguments parser (`parseArgs`), interactive terminal REPL, event logging (`createEventHandler`, which always prints assistant replies even at `logging.level: off`), graceful cleanup.
 - **`src/agent/agent.ts`**: The `runAgent` loop. Manages message history, tracks step limits (`maxSteps`), invokes tools, truncates large outputs, and wires optional subagent delegation and CLI review tools into the registry.
 - **`src/agent/subagents.ts`**: Opt-in child-agent delegation (`subagents` config). Provides `SubagentsConfig` validation/defaults, the read-only tool registry (`createReadOnlyRegistry`), the `delegate` tool, the bounded-concurrency/cancellation scheduler (`runDelegatedBatch`), and `serializeApprovals` for interactive write approvals.
 - **`src/agent/cli-review.ts` + `src/tools/cli-review.ts`**: Constrained Claude/Codex CLI reviewer adapter. Builds a redacted review bundle (reusing `ReviewOrchestrator`), runs the CLI from an isolated temp dir with fixed read-only args and the bundle on stdin, and enforces approval, timeout, and cancellation.
@@ -50,7 +50,8 @@ Context Update & Next Iteration
 - **`src/agent/permissions.ts`**: Controls execution safety. Checks whether file or bash commands escape the git root (`toolLeavesTrustRoot`). Manages approval prompt (`rl.question`). Reuses injected `rl` to prevent terminal keypress duplication.
 - **`src/agent/workspace.ts`**: Tracks `workspace.root` and `workspace.gitRoot`. Guarantees file operations remain contained inside the workspace.
 - **`src/agent/llm.ts` + `src/agent/providers/`**: Provider registry and chat-completions client. Handles HTTP 429/503 retries, exponential backoff, and fallback models.
-- **`src/agent/config.ts`**: Loads `mini-agent.config.yaml`/`.json`/`.mini-agentrc.*` and resolves settings with precedence defaults < file < profile < env < CLI. Validates retry, review, quality-gates, and subagents sections.
+- **`src/agent/config.ts`**: Loads a user-level config from `$XDG_CONFIG_HOME/mini-agent` (or `~/.config/mini-agent`) plus the workspace `mini-agent.config.yaml`/`.json`/`.mini-agentrc.*`, and resolves settings with precedence defaults < user file < workspace file < profile < env < CLI. `--config` replaces only the workspace layer. Validates retry, review, quality-gates, and subagents sections.
+- **`src/agent/config-wizard.ts`**: Interactive config generator. `--user`/`--workspace` select the write scope (user-level is the interactive default), and `--defaults`/`--dry-run` report the resolved target. Also exposed in the REPL as `/config [--user|--workspace]`; changes apply after restart.
 - **`src/agent/customizations.ts`**: Discovers and parses workflows (`.agents/workflows/*.md`) and skills (`.agents/skills/*/SKILL.md`), manages slash commands (`/workflow-name`), appends built-in skills as fallback, and injects customization catalogs into the system prompt.
 - **`src/agent/orchestrator/`**: Deterministic OpenSpec change runner (`mini-agent apply <change>`): parses `tasks.md`, selects tasks, delegates each to `runAgent`, validates quality gates, marks tasks complete.
 - **`prompts/system.md` + `prompts/coding-standards.md`**: Base system prompt and coding standards loaded by `instructions.ts`.

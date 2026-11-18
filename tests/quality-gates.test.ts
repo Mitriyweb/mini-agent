@@ -7,6 +7,9 @@ import { resolveAgentConfig } from '../src/agent/config.js';
 import { Workspace } from '../src/agent/workspace.js';
 import { createPermissions } from '../src/agent/permissions.js';
 import { runAgent } from '../src/agent/agent.js';
+import { isolateUserConfig } from './user-config-isolation.ts';
+
+isolateUserConfig();
 
 const withWorkspace = async (test: (directory: string) => Promise<void>) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mini-agent-quality-gates-'));

@@ -8,6 +8,7 @@ import {
   loadConfigFile,
   normalizePermissionMode,
   resolveAgentConfig,
+  resolveUserConfigDir,
   validateReviewConfig,
   type FileConfigSchema,
 } from './config.ts';
@@ -16,6 +17,7 @@ import { normalizeCustomProviders } from './providers/custom-config.ts';
 import { normalizeQualityGatesConfig } from './quality-gates.ts';
 
 export type ConfigWizardFormat = 'yaml' | 'json';
+export type ConfigWizardScope = 'user' | 'workspace';
 
 export interface ConfigWizardAsk {
   (prompt: string): Promise<string>;
@@ -23,7 +25,9 @@ export interface ConfigWizardAsk {
 
 export interface ConfigWizardOptions {
   workspaceDir: string;
-  /** Explicit output target (from --config). Defaults to <workspaceDir>/mini-agent.config.yaml. */
+  /** Config scope to write. Interactive runs prompt for it; defaults to 'user'. */
+  scope?: ConfigWizardScope;
+  /** Explicit output target (from --config). Overrides `scope` when set. */
   targetPath?: string;
   format?: ConfigWizardFormat;
   /** Print the fully commented defaults template without prompting or writing. */
@@ -448,11 +452,25 @@ const promptField = async (
   }
 };
 
+const promptScope = async (
+  ask: ConfigWizardAsk,
+  log: (m: string) => void,
+  workspaceDir: string,
+): Promise<ConfigWizardScope> => {
+  const userDir = resolveUserConfigDir();
+  for (;;) {
+    const answer = await ask(
+      `Config scope:\n  1) user-level (${userDir})\n  2) workspace (${workspaceDir})\nScope [1]: `,
+    );
+    const value = answer.trim().toLowerCase();
+    if (value === '' || value === '1' || value === 'user' || value === 'u') return 'user';
+    if (value === '2' || value === 'workspace' || value === 'w') return 'workspace';
+    log('  ! expected 1 (user-level) or 2 (workspace)');
+  }
+};
+
 export const runConfigWizard = async (options: ConfigWizardOptions): Promise<ConfigWizardResult> => {
   const workspaceDir = path.resolve(options.workspaceDir || process.cwd());
-  const targetPath = path.resolve(workspaceDir, options.targetPath ?? 'mini-agent.config.yaml');
-  const format: ConfigWizardFormat =
-    options.format ?? (targetPath.endsWith('.json') ? 'json' : 'yaml');
   const log = options.log ?? ((m: string) => console.log(m));
   const warn = (m: string) => console.error(m);
   const ask =
@@ -461,9 +479,31 @@ export const runConfigWizard = async (options: ConfigWizardOptions): Promise<Con
       throw new Error('An interactive prompt function is required for the config wizard.');
     });
 
+  // Explicit --config targets win. Otherwise the interactive wizard asks for a
+  // scope (user-level preselected); non-interactive --defaults uses the default
+  // user scope.
+  const scope =
+    options.scope ??
+    (!options.targetPath && !options.defaultsOnly ? await promptScope(ask, log, workspaceDir) : 'user');
+
+  // Explicit targets keep their extension-based format (`.json` implies JSON).
+  // Scope-based targets pick the filename matching the output format so a JSON
+  // run never lands in a .yaml file.
+  let targetPath: string;
+  let format: ConfigWizardFormat;
+  if (options.targetPath) {
+    targetPath = path.resolve(workspaceDir, options.targetPath);
+    format = options.format ?? (targetPath.endsWith('.json') ? 'json' : 'yaml');
+  } else {
+    format = options.format ?? 'yaml';
+    const dir = scope === 'workspace' ? workspaceDir : resolveUserConfigDir();
+    targetPath = path.join(dir, format === 'json' ? 'mini-agent.config.json' : 'mini-agent.config.yaml');
+  }
+
   if (options.defaultsOnly) {
     const content = serializeConfig(WIZARD_DEFAULT_FILE_CONFIG as Draft, format);
     assertConfigLoads(content, format, workspaceDir);
+    log(`Config target: ${targetPath}`);
     return { path: targetPath, format, content, wrote: false };
   }
 
@@ -492,6 +532,7 @@ export const runConfigWizard = async (options: ConfigWizardOptions): Promise<Con
   assertConfigLoads(content, format, workspaceDir);
 
   if (options.dryRun) {
+    log(`Config target: ${targetPath}`);
     return { path: targetPath, format, content, wrote: false };
   }
 

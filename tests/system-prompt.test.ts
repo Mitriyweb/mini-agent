@@ -6,6 +6,9 @@ import { resolveAgentConfig } from '../src/agent/config.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { isolateUserConfig } from './user-config-isolation.ts';
+
+isolateUserConfig();
 
 describe('System Prompt Subsystem Test Suite', () => {
   it('returns default INSTRUCTIONS when enabled is true and no custom path', async () => {

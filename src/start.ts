@@ -16,7 +16,7 @@ import { Workspace } from './agent/workspace.ts';
 import { AgentResultStatus, SubagentPhase, type AgentEvent } from './types/agent.ts';
 import { PermissionMode } from './types/permissions.ts';
 import { resolveAgentConfig, type PartialAgentConfig } from './agent/config.ts';
-import { runConfigWizard, type ConfigWizardFormat } from './agent/config-wizard.ts';
+import { runConfigWizard, type ConfigWizardFormat, type ConfigWizardScope } from './agent/config-wizard.ts';
 import { validateProfileName } from './agent/profiles.ts';
 import { Logger, type LogLevel } from './agent/logging.ts';
 import { UsageTracker } from './agent/usage-tracker.ts';
@@ -79,6 +79,8 @@ export interface ParsedCLIOptions {
   configDryRun?: boolean;
   configForce?: boolean;
   configFormat?: ConfigWizardFormat;
+  /** Wizard write scope; `--user` wins when both flags are present. */
+  configScope?: ConfigWizardScope;
 }
 
 export const printHelp = () => {
@@ -128,6 +130,8 @@ Common options:
   --dry-run                   (config) Print the generated config without writing
   --force                     (config) Overwrite an existing config without confirmation
   --format <yaml|json>        (config) Output format (default: yaml, or json for .json targets)
+  --user                      (config) Write the user-level config (~/.config/mini-agent)
+  --workspace                 (config) Write the workspace config (mini-agent.config.yaml)
   --review                    Enable external review for the current run
   --no-review                 Disable external review for the current run
   --review-provider <id>      Provider to use for external review (e.g. openai, anthropic)
@@ -152,6 +156,7 @@ REPL commands:
   /normal                 Switch back to normal permission mode
   /workflows             List available workflow shortcuts
   /skills                List available skills
+  /config [--user|--workspace]  Run the configuration wizard (restart to apply)
   /exit                  Exit the interactive session
   /quit                  Exit the interactive session
 `);
@@ -194,6 +199,8 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         'dry-run': { type: 'boolean', default: false },
         force: { type: 'boolean', default: false },
         format: { type: 'string' },
+        user: { type: 'boolean', default: false },
+        workspace: { type: 'boolean', default: false },
         version: { type: 'boolean', short: 'v', default: false },
         help: { type: 'boolean', short: 'h', default: false },
       },
@@ -284,6 +291,11 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         : configFormatRaw === 'json'
           ? 'json'
           : undefined;
+    const configScope: ConfigWizardScope | undefined = parsed.values.user
+      ? 'user'
+      : parsed.values.workspace
+        ? 'workspace'
+        : undefined;
 
     let workspaceDir = (parsed.values.dir as string | undefined) || process.cwd();
     const positionals = parsed.positionals;
@@ -338,6 +350,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       configDryRun: Boolean(parsed.values['dry-run']),
       configForce: Boolean(parsed.values.force),
       configFormat,
+      configScope,
     };
   } catch {
     // Fallback manual parsing
@@ -366,6 +379,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
     let configDryRun = false;
     let configForce = false;
     let configFormat: ConfigWizardFormat | undefined;
+    let configScope: ConfigWizardScope | undefined;
     const taskParts: string[] = [];
 
     for (let i = 0; i < args.length; i++) {
@@ -436,6 +450,10 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
         const val = args[++i].toLowerCase();
         if (val === 'yaml' || val === 'yml') configFormat = 'yaml';
         else if (val === 'json') configFormat = 'json';
+      } else if (arg === '--user') {
+        configScope = 'user';
+      } else if (arg === '--workspace') {
+        if (!configScope) configScope = 'workspace';
       } else if (
         !arg.startsWith('-') &&
         taskParts.length === 0 &&
@@ -483,6 +501,7 @@ export const parseArgs = (argv: string[]): ParsedCLIOptions => {
       configDryRun,
       configForce,
       configFormat,
+      configScope,
     };
   }
 };
@@ -516,9 +535,47 @@ export const parsePermissionModeCommand = (input: string): PermissionModeCommand
   return { kind: 'none' };
 };
 
+/**
+ * Parse an interactive config-wizard slash command.
+ * `/config` runs the wizard with the interactive scope prompt;
+ * `/config --user` and `/config --workspace` skip that prompt.
+ */
+export type ConfigWizardCommand =
+  | { kind: 'run'; scope?: ConfigWizardScope }
+  | { kind: 'invalid' }
+  | { kind: 'none' };
+
+export const parseConfigWizardCommand = (input: string): ConfigWizardCommand => {
+  const trimmed = input.trim();
+  if (trimmed === '/config') return { kind: 'run' };
+  if (!trimmed.startsWith('/config ')) return { kind: 'none' };
+
+  let scope: ConfigWizardScope | undefined;
+  const tokens = trimmed.slice('/config'.length).trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return { kind: 'run' };
+  for (const token of tokens) {
+    if (token === '--user') {
+      scope = 'user';
+    } else if (token === '--workspace') {
+      if (!scope) scope = 'workspace';
+    } else {
+      return { kind: 'invalid' };
+    }
+  }
+  return { kind: 'run', scope };
+};
+
 export const createEventHandler = (logger: Logger) => {
   return async (event: AgentEvent) => {
-    if (logger.isOff()) return;
+    if (logger.isOff()) {
+      // `off` disables logging noise, but assistant replies are the run's
+      // only user-facing output and must still reach the terminal.
+      if (event.type === 'assistant') {
+        console.log(color.success('\n🤖 Assistant:'));
+        console.log(event.text);
+      }
+      return;
+    }
 
     switch (event.type) {
       case 'step':
@@ -594,7 +651,7 @@ export const main = async () => {
 
   if (options.command === ParsedCommand.Config) {
     if (options.task) {
-      console.error(color.error('Usage: mini-agent config [--dir <path>] [--config <path>] [--defaults] [--dry-run] [--force] [--format yaml|json]'));
+      console.error(color.error('Usage: mini-agent config [--dir <path>] [--config <path>] [--user|--workspace] [--defaults] [--dry-run] [--force] [--format yaml|json]'));
       process.exitCode = 1;
       return;
     }
@@ -608,6 +665,7 @@ export const main = async () => {
     try {
       const result = await runConfigWizard({
         workspaceDir: options.workspaceDir,
+        scope: options.configScope,
         targetPath: options.configPath,
         format: options.configFormat,
         defaultsOnly: options.configDefaults,
@@ -1005,6 +1063,32 @@ export const main = async () => {
         continue;
       }
 
+      const configCommand = parseConfigWizardCommand(trimmed);
+      if (configCommand.kind === 'invalid') {
+        console.log(color.warn('Usage: /config [--user|--workspace]\n'));
+        continue;
+      }
+      if (configCommand.kind === 'run') {
+        try {
+          const result = await runConfigWizard({
+            workspaceDir: workspace.root,
+            scope: configCommand.scope,
+            ask: (question) => rl.question(question),
+          });
+          if (result.aborted) {
+            console.log('Aborted; existing config left unchanged.');
+          } else if (result.wrote) {
+            console.log(color.success(`\nWrote ${result.path}`));
+            console.log(color.warn('Restart mini-agent to apply the new configuration.\n'));
+          } else {
+            console.log(result.content);
+          }
+        } catch (err) {
+          console.log(color.error(`\nConfig wizard failed: ${(err as Error).message}\n`));
+        }
+        continue;
+      }
+
       if (trimmed === '/provider' || trimmed.startsWith('/provider ')) {
         const arg = trimmed.slice('/provider'.length).trim();
         let selectedDef = interactiveRegistry.get(arg);
@@ -1070,6 +1154,7 @@ export const main = async () => {
         console.log('  /system-prompt [on|off|toggle] Toggle built-in system prompt for this session');
         console.log('  /workflows           List available workflow shortcuts');
         console.log('  /skills              List available skills');
+        console.log('  /config [--user|--workspace]  Run the configuration wizard (restart to apply)');
         console.log('  /max-steps <number>  Change the step limit for new tasks');
         console.log('  /auto-approve [on|off]  Toggle or set approval prompts');
         console.log('  /mode [normal|bypass]   Show or switch permission mode');

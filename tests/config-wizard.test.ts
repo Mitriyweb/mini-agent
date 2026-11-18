@@ -4,18 +4,27 @@ import os from 'node:os';
 import path from 'node:path';
 import { load as parseYaml } from 'js-yaml';
 
-import { parseArgs, ParsedCommand } from '../src/start.ts';
+import { parseArgs, parseConfigWizardCommand, ParsedCommand } from '../src/start.ts';
+import { createCompleter } from '../src/agent/completer.ts';
 import { runConfigWizard, WIZARD_FIELDS, WIZARD_DEFAULT_FILE_CONFIG } from '../src/agent/config-wizard.ts';
-import { loadConfigFile, resolveAgentConfig } from '../src/agent/config.ts';
+import { loadConfigFile, resolveAgentConfig, resolveUserConfigDir } from '../src/agent/config.ts';
 
 let tmpDir: string;
+let userConfigHome: string;
+let originalXdg: string | undefined;
 
 beforeEach(() => {
+  originalXdg = process.env.XDG_CONFIG_HOME;
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'config-wizard-test-'));
+  userConfigHome = fs.mkdtempSync(path.join(os.tmpdir(), 'config-wizard-user-test-'));
+  process.env.XDG_CONFIG_HOME = userConfigHome;
 });
 
 afterEach(() => {
+  if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+  else process.env.XDG_CONFIG_HOME = originalXdg;
   fs.rmSync(tmpDir, { recursive: true, force: true });
+  fs.rmSync(userConfigHome, { recursive: true, force: true });
 });
 
 const silentLog = () => {};
@@ -52,6 +61,12 @@ describe('parseArgs: config command', () => {
     expect(opts.configPath).toBe('custom.yaml');
   });
 
+  it('parses config wizard scope flags', () => {
+    expect(parseArgs(['node', 'mini-agent', 'config', '--user']).configScope).toBe('user');
+    expect(parseArgs(['node', 'mini-agent', 'config', '--workspace']).configScope).toBe('workspace');
+    expect(parseArgs(['node', 'mini-agent', 'config']).configScope).toBeUndefined();
+  });
+
   it('does not break normal task parsing', () => {
     const opts = parseArgs(['node', 'mini-agent', 'fix the bug']);
     expect(opts.command).toBeUndefined();
@@ -59,9 +74,32 @@ describe('parseArgs: config command', () => {
   });
 });
 
+describe('parseConfigWizardCommand: REPL /config', () => {
+  it('is suggested by slash-command autocompletion', () => {
+    const completer = createCompleter({ workspaceRoot: tmpDir });
+    const [hits] = completer('/con');
+    expect(hits).toContain('/config');
+  });
+
+  it('recognizes /config with optional scope flags', () => {
+    expect(parseConfigWizardCommand('/config')).toEqual({ kind: 'run' });
+    expect(parseConfigWizardCommand('  /config  ')).toEqual({ kind: 'run' });
+    expect(parseConfigWizardCommand('/config --user')).toEqual({ kind: 'run', scope: 'user' });
+    expect(parseConfigWizardCommand('/config --workspace')).toEqual({ kind: 'run', scope: 'workspace' });
+    expect(parseConfigWizardCommand('/config --workspace --user')).toEqual({ kind: 'run', scope: 'user' });
+  });
+
+  it('rejects unknown arguments and ignores unrelated input', () => {
+    expect(parseConfigWizardCommand('/config --defaults')).toEqual({ kind: 'invalid' });
+    expect(parseConfigWizardCommand('/config --bogus')).toEqual({ kind: 'invalid' });
+    expect(parseConfigWizardCommand('/configuration')).toEqual({ kind: 'none' });
+    expect(parseConfigWizardCommand('config')).toEqual({ kind: 'none' });
+  });
+});
+
 describe('runConfigWizard', () => {
   it('--defaults prints a commented template that loads cleanly', async () => {
-    const result = await runConfigWizard({ workspaceDir: tmpDir, defaultsOnly: true, log: silentLog });
+    const result = await runConfigWizard({ workspaceDir: tmpDir, scope: 'workspace', defaultsOnly: true, log: silentLog });
     expect(result.wrote).toBe(false);
     expect(result.content).toContain('logging:');
     expect(result.content).toContain('permission_mode:');
@@ -81,6 +119,7 @@ describe('runConfigWizard', () => {
   it('interactive run with empty answers writes wizard defaults', async () => {
     const result = await runConfigWizard({
       workspaceDir: tmpDir,
+      scope: 'workspace',
       ask: emptyAsk,
       log: silentLog,
     });
@@ -102,7 +141,7 @@ describe('runConfigWizard', () => {
       'quality_gates.gates': ['[{"id":"lint","command":"bun run lint","required":true}]'],
       'providers': ['{"llmlite":{"baseURL":"https://llm.example.com/v1","defaultModel":"auto","apiKeyEnvVar":"LLMLITE_API_KEY"}}'],
     });
-    const result = await runConfigWizard({ workspaceDir: tmpDir, ask, log: silentLog });
+    const result = await runConfigWizard({ workspaceDir: tmpDir, scope: 'workspace', ask, log: silentLog });
     expect(result.wrote).toBe(true);
     const resolved = resolveAgentConfig({}, tmpDir);
     expect(resolved.logging.level).toBe('verbose');
@@ -118,7 +157,7 @@ describe('runConfigWizard', () => {
     const ask = askWith({
       'external_review.retries': ['{bad json', '{"maxAttempts":5}'],
     });
-    const result = await runConfigWizard({ workspaceDir: tmpDir, ask, log: silentLog });
+    const result = await runConfigWizard({ workspaceDir: tmpDir, scope: 'workspace', ask, log: silentLog });
     expect(result.wrote).toBe(true);
     const fileConfig = loadConfigFile(tmpDir);
     expect(fileConfig.external_review?.retries?.maxAttempts).toBe(5);
@@ -131,6 +170,7 @@ describe('runConfigWizard', () => {
     );
     const result = await runConfigWizard({
       workspaceDir: tmpDir,
+      scope: 'workspace',
       ask: emptyAsk,
       force: true,
       log: silentLog,
@@ -148,6 +188,7 @@ describe('runConfigWizard', () => {
     fs.writeFileSync(target, 'logging:\n  level: verbose\n');
     const result = await runConfigWizard({
       workspaceDir: tmpDir,
+      scope: 'workspace',
       ask: askWith({ 'already exists': ['n'] }),
       log: silentLog,
     });
@@ -161,6 +202,7 @@ describe('runConfigWizard', () => {
     fs.writeFileSync(target, 'logging:\n  level: verbose\n');
     const result = await runConfigWizard({
       workspaceDir: tmpDir,
+      scope: 'workspace',
       ask: emptyAsk,
       force: true,
       log: silentLog,
@@ -175,6 +217,7 @@ describe('runConfigWizard', () => {
   it('--dry-run prints content without writing', async () => {
     const result = await runConfigWizard({
       workspaceDir: tmpDir,
+      scope: 'workspace',
       ask: emptyAsk,
       dryRun: true,
       log: silentLog,
@@ -206,10 +249,97 @@ describe('runConfigWizard', () => {
       'quality_gates.gates': ['[{"id":"bad","required":true}]', ''],
     });
     // field-level validation rejects it; empty answer keeps []
-    const result = await runConfigWizard({ workspaceDir: tmpDir, ask, log: silentLog });
+    const result = await runConfigWizard({ workspaceDir: tmpDir, scope: 'workspace', ask, log: silentLog });
     expect(result.wrote).toBe(true);
     const fileConfig = loadConfigFile(tmpDir);
     expect(fileConfig.quality_gates?.gates ?? []).toEqual([]);
+  });
+  it('--config overrides the scope target', async () => {
+    const result = await runConfigWizard({
+      workspaceDir: tmpDir,
+      scope: 'user',
+      targetPath: 'explicit.yaml',
+      ask: emptyAsk,
+      log: silentLog,
+    });
+    expect(result.path).toBe(path.join(tmpDir, 'explicit.yaml'));
+    expect(fs.existsSync(result.path)).toBe(true);
+  });
+
+  it('user scope writes under the user config dir without prompting for scope', async () => {
+    const prompts: string[] = [];
+    const result = await runConfigWizard({
+      workspaceDir: tmpDir,
+      scope: 'user',
+      ask: async (prompt) => {
+        prompts.push(prompt);
+        return '';
+      },
+      log: silentLog,
+    });
+
+    const target = path.join(resolveUserConfigDir(), 'mini-agent.config.yaml');
+    expect(result.path).toBe(target);
+    expect(fs.existsSync(target)).toBe(true);
+    expect(prompts.some((prompt) => prompt.includes('Config scope'))).toBe(false);
+  });
+
+  it('workspace scope writes to the workspace root without prompting for scope', async () => {
+    const prompts: string[] = [];
+    const result = await runConfigWizard({
+      workspaceDir: tmpDir,
+      scope: 'workspace',
+      ask: async (prompt) => {
+        prompts.push(prompt);
+        return '';
+      },
+      log: silentLog,
+    });
+
+    expect(result.path).toBe(path.join(tmpDir, 'mini-agent.config.yaml'));
+    expect(fs.existsSync(result.path)).toBe(true);
+    expect(prompts.some((prompt) => prompt.includes('Config scope'))).toBe(false);
+  });
+
+  it('interactive scope prompt preselects the user config', async () => {
+    const result = await runConfigWizard({ workspaceDir: tmpDir, ask: emptyAsk, log: silentLog });
+    expect(result.path).toBe(path.join(resolveUserConfigDir(), 'mini-agent.config.yaml'));
+    expect(fs.existsSync(result.path)).toBe(true);
+  });
+
+  it('interactive scope prompt honors a workspace answer', async () => {
+    const ask = async (prompt: string) => (prompt.includes('Config scope') ? '2' : '');
+    const result = await runConfigWizard({ workspaceDir: tmpDir, ask, log: silentLog });
+    expect(result.path).toBe(path.join(tmpDir, 'mini-agent.config.yaml'));
+    expect(fs.existsSync(result.path)).toBe(true);
+  });
+
+  it('--defaults reports the scoped target', async () => {
+    const logs: string[] = [];
+    const result = await runConfigWizard({
+      workspaceDir: tmpDir,
+      scope: 'workspace',
+      defaultsOnly: true,
+      log: (message) => logs.push(message),
+    });
+    const target = path.join(tmpDir, 'mini-agent.config.yaml');
+    expect(result.path).toBe(target);
+    expect(logs.join('\n')).toContain(target);
+  });
+
+  it('--dry-run reports the scoped target without writing', async () => {
+    const logs: string[] = [];
+    const result = await runConfigWizard({
+      workspaceDir: tmpDir,
+      scope: 'user',
+      dryRun: true,
+      ask: emptyAsk,
+      log: (message) => logs.push(message),
+    });
+    const target = path.join(resolveUserConfigDir(), 'mini-agent.config.yaml');
+    expect(result.path).toBe(target);
+    expect(logs.join('\n')).toContain(target);
+    expect(fs.existsSync(target)).toBe(false);
   });
 });
 

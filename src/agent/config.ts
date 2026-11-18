@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { load as parseYaml } from 'js-yaml';
 import type { LogLevel, LoggingConfig } from './logging.ts';
@@ -226,7 +227,7 @@ export interface AgentResolvedConfig {
   customProviders: Record<string, CustomProviderConfig>;
 }
 
-const CONFIG_FILE_NAMES = [
+export const CONFIG_FILE_NAMES = [
   'mini-agent.config.yaml',
   'mini-agent.config.yml',
   'mini-agent.config.json',
@@ -234,6 +235,40 @@ const CONFIG_FILE_NAMES = [
   '.mini-agentrc.yml',
   '.mini-agentrc.json',
 ];
+
+/**
+ * Directory that holds the user-level config file.
+ * Honors XDG_CONFIG_HOME (when absolute) and falls back to ~/.config.
+ */
+export const resolveUserConfigDir = (): string => {
+  const xdg = process.env.XDG_CONFIG_HOME;
+  const base = xdg && path.isAbsolute(xdg) ? xdg : path.join(os.homedir(), '.config');
+  return path.join(base, 'mini-agent');
+};
+
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * Deep-merge two file-config layers. Records merge recursively; arrays and
+ * scalars from `override` replace the base value.
+ */
+export const deepMergeFileConfigs = (
+  base: FileConfigSchema,
+  override: FileConfigSchema,
+): FileConfigSchema => {
+  const mergeValues = (baseValue: unknown, overrideValue: unknown): unknown => {
+    if (isPlainRecord(baseValue) && isPlainRecord(overrideValue)) {
+      const merged: Record<string, unknown> = { ...baseValue };
+      for (const [key, value] of Object.entries(overrideValue)) {
+        merged[key] = mergeValues(baseValue[key], value);
+      }
+      return merged;
+    }
+    return overrideValue;
+  };
+  return mergeValues(base, override) as FileConfigSchema;
+};
 
 export const loadConfigFile = (workspaceRoot?: string, explicitPath?: string): FileConfigSchema => {
   const root = workspaceRoot ? path.resolve(workspaceRoot) : process.cwd();
@@ -265,11 +300,17 @@ export const resolveAgentConfig = (
   cliOverrides: PartialAgentConfig = {},
   workspaceRoot?: string,
 ): AgentResolvedConfig => {
-  const fileConfig = loadConfigFile(workspaceRoot, cliOverrides.configPath);
+  // Layered file config: the user-level file provides application-wide
+  // defaults and the workspace file (or an explicit --config target) wins
+  // per key. Profile/env/CLI layers still override both.
+  const userFileConfig = loadConfigFile(resolveUserConfigDir());
+  const workspaceFileConfig = loadConfigFile(workspaceRoot, cliOverrides.configPath);
+  const fileConfig = deepMergeFileConfigs(userFileConfig, workspaceFileConfig);
 
-  // Resolve profile overrides (defaults < file < profile < env < CLI).
-  // The profile layer sits between file config and env/CLI so explicit user
-  // flags always win. autoApprove and configPath are excluded from profiles.
+  // Resolve profile overrides (defaults < user file < workspace file <
+  // profile < env < CLI). The profile layer sits between file config and
+  // env/CLI so explicit user flags always win. autoApprove and configPath are
+  // excluded from profiles.
   const profileOverrides = cliOverrides.profile ? resolveProfile(cliOverrides.profile) : {};
 
   // Defaults

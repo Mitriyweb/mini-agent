@@ -334,8 +334,8 @@
         <p>Opt-in permission mode (flag, env, config, or /bypass) auto-approves all tool prompts and skips quality gates — deny rules and workspace containment still apply.</p>
       </div>
       <div class="feature">
-        <h3>Config wizard</h3>
-        <p>mini-agent config walks every option interactively, validates answers, and writes a ready-to-use mini-agent.config.yaml — with --defaults, --dry-run, and JSON output.</p>
+        <h3>Config wizard & user defaults</h3>
+        <p>mini-agent config writes user-level (~/.config/mini-agent) or workspace config via --user/--workspace, validates answers, and supports --defaults, --dry-run, and JSON output. User defaults merge beneath workspace values, and logging off keeps assistant replies visible.</p>
       </div>
     </div>
 

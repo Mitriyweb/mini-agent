@@ -12,6 +12,7 @@ const BUILTIN_SLASH_COMMANDS = [
   '/help',
   '/workflows',
   '/skills',
+  '/config',
   '/provider',
   '/model',
   '/log-level',

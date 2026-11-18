@@ -3,6 +3,9 @@ import { filterSkills } from '../src/agent/skills.js';
 import { resolveSlashCommand, type Skill } from '../src/agent/customizations.js';
 import { parseArgs } from '../src/start.js';
 import { resolveAgentConfig } from '../src/agent/config.js';
+import { isolateUserConfig } from './user-config-isolation.ts';
+
+isolateUserConfig();
 
 describe('Skills Management Test Suite', () => {
   const dummySkills: Skill[] = [

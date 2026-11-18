@@ -13,7 +13,7 @@ A lightweight, modular coding agent harness supporting multi-provider LLMs (**Mo
   - **Gzip Transport**: JSON request bodies are gzip-encoded (`Content-Encoding: gzip`) and `Accept-Encoding: gzip` is advertised on every provider call; gzip-encoded responses are transparently decompressed.
 - **TypeScript & ESM**: Fully typed codebase targeting Node.js >= 20 and Bun.
 - **Configurable Observability & Logging**:
-  - `off`: Complete quiet execution.
+  - `off`: Suppresses the startup banner, step/tool event logs, and the log file sink, while assistant responses and final task output still print.
   - `normal`: Standard workflow execution feedback.
   - `verbose`: Detailed debugging including prompt metadata, request duration, token usage, and skill resolution, with safe secret redaction.
   - Errors are always echoed to the console (`stderr`) even when file logging is enabled, so failures are never silent.
@@ -147,7 +147,9 @@ Options:
   --skills <skill1,skill2>    Comma-separated list of allowed skills
   --system-prompt             Enable standard built-in system prompt (default)
   --no-system-prompt          Disable standard built-in system prompt
-  --config <path>             Path to configuration YAML/JSON file
+  --config <path>             Path to configuration YAML/JSON file (config: workspace-layer target)
+  --user                      (config) Write the user-level config (~/.config/mini-agent)
+  --workspace                 (config) Write the workspace config (mini-agent.config.yaml)
   --permission-mode <mode>    Permission mode: normal (default), bypass (aliases: yolo, dangerous)
   --bypass                    Shortcut for --permission-mode bypass
   -v, --version               Show the installed version
@@ -158,28 +160,37 @@ Options:
 
 ## Configuration File & Precedence
 
-`mini-agent` automatically loads `mini-agent.config.yaml`, `mini-agent.config.json`, `.mini-agentrc.yaml`, or `.mini-agentrc.json` from the workspace root (or from an explicit path specified with `--config`).
+`mini-agent` loads two configuration layers: an optional user-level file and an optional workspace file, both using the same names (`mini-agent.config.yaml`, `mini-agent.config.json`, `.mini-agentrc.yaml`, or `.mini-agentrc.json`).
+
+- **User-level** (applies to every workspace): `$XDG_CONFIG_HOME/mini-agent/` when `XDG_CONFIG_HOME` is set, otherwise `~/.config/mini-agent/`.
+- **Workspace-level**: the workspace root, or an explicit path passed with `--config`.
+
+Values merge section-by-section and key-by-key, with workspace values winning on conflict (arrays and scalars replace, records merge). `--config <path>` replaces only the workspace layer, so user-level defaults still apply beneath it.
 
 ### Configuration Wizard
 
-Run `mini-agent config` for an interactive wizard that walks every configurable section (logging, cost tracking, skills, system prompt, provider/model, permission mode, retry, external review, subagents, quality gates, and custom providers), validates each answer with the same rules the config loader uses, and writes a ready-to-use `mini-agent.config.yaml` in the workspace root — picked up automatically on the next run.
+Run `mini-agent config` for an interactive wizard that first asks whether to target the user-level config (default) or the workspace config, then walks every configurable section (logging, cost tracking, skills, system prompt, provider/model, permission mode, retry, external review, subagents, quality gates, and custom providers). Each answer is validated with the same rules the config loader uses, and the result is written ready to use — picked up automatically on the next run.
 
 ```bash
-mini-agent config                  # interactive wizard → ./mini-agent.config.yaml
+mini-agent config                  # interactive wizard → user-level config (~/.config/mini-agent)
+mini-agent config --workspace      # write the workspace config instead
+mini-agent config --user           # skip the scope prompt and write the user-level config
 mini-agent config --defaults       # print a fully commented default template (logging off)
-mini-agent config --dry-run        # preview generated config without writing
+mini-agent config --dry-run        # preview generated config and resolved target without writing
 mini-agent config --force          # overwrite an existing config without confirmation
 mini-agent config --config custom.yaml --format json   # custom target/format
 ```
 
-Empty input keeps the current value (existing config pre-fills the prompts); invalid input is rejected and re-asked. `--defaults` works without a TTY; the interactive wizard requires one. See `mini-agent.config.example.yaml` for the full annotated option reference.
+Empty input keeps the current value (existing config pre-fills the prompts); invalid input is rejected and re-asked. `--defaults` and `--dry-run` report the resolved target path. `--defaults` works without a TTY; the interactive wizard requires one. See `mini-agent.config.example.yaml` for the full annotated option reference.
 
 ### Configuration Precedence Order
 Rules are evaluated in strict priority order (CLI arguments always take highest precedence):
 ```
 defaults
   ↓
-config file
+user-level config file
+  ↓
+workspace config file (or --config target)
   ↓
 profile preset (sits between file config and env for additive role-based overrides)
   ↓
@@ -436,6 +447,7 @@ In interactive mode (`mini-agent`), the following built-in slash commands are av
 | `/help` | Show workflow, skill, provider, and command help |
 | `/workflows` | List available workflow shortcuts |
 | `/skills` | List active skills |
+| `/config [--user\|--workspace]` | Run the configuration wizard in-session; restart to apply the new config |
 | `/max-steps <number>` | Set maximum execution steps for new tasks |
 | `/auto-approve [on\|off\|toggle]` | Toggle tool approval prompts |
 | `/mode [normal\|bypass]` | Show or switch permission mode |

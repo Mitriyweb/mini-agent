@@ -5,6 +5,9 @@ import path from 'node:path';
 import { Logger, redactSecrets } from '../src/agent/logging.js';
 import { createEventHandler, parseArgs } from '../src/start.js';
 import { resolveAgentConfig } from '../src/agent/config.js';
+import { isolateUserConfig } from './user-config-isolation.ts';
+
+isolateUserConfig();
 
 describe('Logging Subsystem Test Suite', () => {
   it('redactSecrets masks API keys, bearer tokens, and sensitive headers', () => {
@@ -139,6 +142,36 @@ describe('Logging Subsystem Test Suite', () => {
       const contents = await fs.readFile(logFile, 'utf8');
       expect(contents).toBe('');
       expect(loggedToConsole.join('\n')).toContain('assistant reply text');
+    } finally {
+      console.log = originalConsoleLog;
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('createEventHandler prints assistant replies at the off level but suppresses event noise', async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mini-agent-log-test-'));
+    const logFile = path.join(tempDir, 'mini-agent.log');
+    const originalConsoleLog = console.log;
+    const loggedToConsole: string[] = [];
+
+    try {
+      console.log = (...args: any[]) => {
+        loggedToConsole.push(args.join(' '));
+      };
+
+      const logger = new Logger({ level: 'off', filePath: logFile });
+      const onEvent = createEventHandler(logger);
+
+      await onEvent({ type: 'assistant', text: 'assistant reply with logging off' } as any);
+      await onEvent({ type: 'step', step: 1, maxSteps: 3, model: 'test-model' } as any);
+      await onEvent({ type: 'tool', name: 'bash', argsText: '{"command":"ls"}' } as any);
+
+      const output = loggedToConsole.join('\n');
+      expect(output).toContain('assistant reply with logging off');
+      expect(output).not.toContain('[Step 1/3]');
+      expect(output).not.toContain('Tool Call');
+      // The log file sink stays silent at the off level.
+      expect(await fs.readFile(logFile, 'utf8')).toBe('');
     } finally {
       console.log = originalConsoleLog;
       await fs.rm(tempDir, { recursive: true, force: true });

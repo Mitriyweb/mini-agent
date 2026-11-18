@@ -1,4 +1,13 @@
 # mini-agent configuration example
+#
+# Copy to one of:
+#   ~/.config/mini-agent/mini-agent.config.yaml   (user-level defaults; honors XDG_CONFIG_HOME)
+#   <workspace>/mini-agent.config.yaml            (workspace overrides)
+#
+# User-level and workspace files merge section-by-section, with workspace
+# values winning per key. A file passed with --config replaces only the
+# workspace layer. `logging.level: off` suppresses log noise but still prints
+# assistant responses and final task output.
 
 logging:
   level: normal # off | normal | verbose

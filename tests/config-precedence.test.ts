@@ -1,16 +1,19 @@
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
-import { resolveAgentConfig } from '../src/agent/config.js';
+import { deepMergeFileConfigs, resolveAgentConfig, resolveUserConfigDir } from '../src/agent/config.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
-describe('Configuration Precedence Test Suite (defaults < config file < env < CLI)', () => {
+describe('Configuration Precedence Test Suite (defaults < user file < workspace file < env < CLI)', () => {
   let tempDir: string;
+  let userConfigHome: string;
   let originalEnv: Record<string, string | undefined>;
 
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mini-agent-config-test-'));
+    userConfigHome = await fs.mkdtemp(path.join(os.tmpdir(), 'mini-agent-user-config-test-'));
     originalEnv = {
+      XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
       LOG_LEVEL: process.env.LOG_LEVEL,
       MINI_AGENT_LOG_LEVEL: process.env.MINI_AGENT_LOG_LEVEL,
       MINI_AGENT_COST_TRACKING: process.env.MINI_AGENT_COST_TRACKING,
@@ -22,6 +25,7 @@ describe('Configuration Precedence Test Suite (defaults < config file < env < CL
       MINI_AGENT_SUBAGENTS_ALLOW_NESTED: process.env.MINI_AGENT_SUBAGENTS_ALLOW_NESTED,
       MINI_AGENT_PERMISSION_MODE: process.env.MINI_AGENT_PERMISSION_MODE,
     };
+    process.env.XDG_CONFIG_HOME = userConfigHome;
     delete process.env.LOG_LEVEL;
     delete process.env.MINI_AGENT_LOG_LEVEL;
     delete process.env.MINI_AGENT_COST_TRACKING;
@@ -40,6 +44,109 @@ describe('Configuration Precedence Test Suite (defaults < config file < env < CL
       else process.env[k] = v;
     }
     await fs.rm(tempDir, { recursive: true, force: true });
+    await fs.rm(userConfigHome, { recursive: true, force: true });
+  });
+
+  const writeUserConfig = async (content: string): Promise<string> => {
+    const dir = path.join(userConfigHome, 'mini-agent');
+    await fs.mkdir(dir, { recursive: true });
+    const file = path.join(dir, 'mini-agent.config.yaml');
+    await fs.writeFile(file, content, 'utf8');
+    return file;
+  };
+
+  it('resolves the user config dir from XDG_CONFIG_HOME', () => {
+    expect(resolveUserConfigDir()).toBe(path.join(userConfigHome, 'mini-agent'));
+  });
+
+  it('user config applies when the workspace has no config file', async () => {
+    await writeUserConfig('logging:\n  level: verbose\npermission_mode: bypass\n');
+
+    const config = resolveAgentConfig({}, tempDir);
+    expect(config.logging.level).toBe('verbose');
+    expect(config.permissionMode).toBe('bypass');
+  });
+
+  it('missing user config directory does not affect resolution', () => {
+    const config = resolveAgentConfig({}, tempDir);
+    expect(config.logging.level).toBe('normal');
+    expect(config.permissionMode).toBe('normal');
+  });
+
+  it('workspace config overrides user config per key', async () => {
+    await writeUserConfig('permission_mode: bypass\nskills:\n  enabled: false\n');
+    await fs.writeFile(
+      path.join(tempDir, 'mini-agent.config.yaml'),
+      'permission_mode: normal\n',
+      'utf8',
+    );
+
+    const config = resolveAgentConfig({}, tempDir);
+    expect(config.permissionMode).toBe('normal');
+    // user values not mentioned by the workspace file still apply
+    expect(config.skills.enabled).toBe(false);
+  });
+
+  it('user config fills gaps left by the workspace config', async () => {
+    await writeUserConfig('subagents:\n  enabled: true\n');
+    await fs.writeFile(
+      path.join(tempDir, 'mini-agent.config.yaml'),
+      'logging:\n  level: verbose\n',
+      'utf8',
+    );
+
+    const config = resolveAgentConfig({}, tempDir);
+    expect(config.subagents.enabled).toBe(true);
+    expect(config.logging.level).toBe('verbose');
+  });
+
+  it('nested sections merge per key', async () => {
+    await writeUserConfig('cost_tracking:\n  currency: EUR\n  enabled: false\n');
+    await fs.writeFile(
+      path.join(tempDir, 'mini-agent.config.yaml'),
+      'cost_tracking:\n  enabled: true\n',
+      'utf8',
+    );
+
+    const config = resolveAgentConfig({}, tempDir);
+    expect(config.costTracking.currency).toBe('EUR');
+    expect(config.costTracking.enabled).toBe(true);
+  });
+
+  it('arrays and scalars replace rather than concatenate', async () => {
+    await writeUserConfig('skills:\n  allow: [git, code-review]\n');
+    await fs.writeFile(
+      path.join(tempDir, 'mini-agent.config.yaml'),
+      'skills:\n  allow: [git]\n',
+      'utf8',
+    );
+
+    expect(resolveAgentConfig({}, tempDir).skills.allow).toEqual(['git']);
+  });
+
+  it('--config replaces only the workspace layer, keeping user defaults beneath it', async () => {
+    await writeUserConfig('permission_mode: bypass\nsubagents:\n  enabled: true\n');
+    await fs.writeFile(
+      path.join(tempDir, 'alternate.yaml'),
+      'permission_mode: normal\n',
+      'utf8',
+    );
+
+    const config = resolveAgentConfig({ configPath: 'alternate.yaml' }, tempDir);
+    expect(config.permissionMode).toBe('normal');
+    expect(config.subagents.enabled).toBe(true);
+  });
+
+  it('deepMergeFileConfigs merges records recursively and replaces everything else', () => {
+    const merged = deepMergeFileConfigs(
+      { logging: { level: 'verbose' }, skills: { allow: ['a', 'b'] }, max_steps: 10 } as any,
+      { logging: { filePath: '/tmp/log' }, skills: { allow: ['c'] }, max_steps: 20 } as any,
+    );
+    expect(merged).toEqual({
+      logging: { level: 'verbose', filePath: '/tmp/log' },
+      skills: { allow: ['c'] },
+      max_steps: 20,
+    });
   });
 
   it('returns default settings when no config file, env, or CLI overrides are present', () => {

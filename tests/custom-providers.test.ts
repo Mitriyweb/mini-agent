@@ -9,6 +9,9 @@ import { ProviderRegistry } from '../src/agent/providers/registry.js';
 import { createProvider } from '../src/agent/llm.js';
 import { resolveAgentConfig } from '../src/agent/config.js';
 import type { AddressInfo } from 'node:net';
+import { isolateUserConfig } from './user-config-isolation.ts';
+
+isolateUserConfig();
 
 const validEntry = {
   baseURL: 'https://llmlite.example.com/v1',
